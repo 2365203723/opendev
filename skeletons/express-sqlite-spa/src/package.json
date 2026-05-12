@@ -1,0 +1,23 @@
+{
+  "name": "personal-blog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "demo-blogger personal blog MVP",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "escape-html": "^1.0.3",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -9,9 +9,9 @@
 - Write（只写 doc/design.md, lessons/architect.md）
 
 ## Multi-CLI
-- mcp__Multi-CLI__Ask-Codex
-- mcp__Multi-CLI__Ask-Gemini
-- mcp__Multi-CLI__Ask-OpenCode
+- mcp__Multi-CLI__Ask-Codex  （必做二审）
+- mcp__Multi-CLI__Ask-OpenCode  （备用）
+- mcp__Multi-CLI__Ask-Gemini  ❌ 本公司禁用
 
 ## 禁用
 - Bash（我不跑命令）

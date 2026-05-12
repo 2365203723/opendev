@@ -12,9 +12,9 @@
 - Edit（不使用——章程只增不改，改就新建版本）
 
 ## Multi-CLI MCP
-- mcp__Multi-CLI__Ask-Gemini（长文档摘要）
-- mcp__Multi-CLI__Ask-Codex（数值推演）
-- mcp__Multi-CLI__Ask-OpenCode（敏感场景）
+- mcp__Multi-CLI__Ask-Codex（章程二审、数值推演、分歧裁决辅助）
+- mcp__Multi-CLI__Ask-OpenCode（敏感场景备用）
+- mcp__Multi-CLI__Ask-Gemini  ❌ 本公司禁用
 
 ## 禁用工具
 - Bash（我不跑命令，由 dev/devops 执行）

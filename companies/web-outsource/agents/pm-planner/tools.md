@@ -11,8 +11,8 @@
 - Write（只写 doc/plan.md, lessons/pm.md, logs/daily-*.md）
 
 ## Multi-CLI
-- mcp__Multi-CLI__Ask-Gemini（长需求摘要）
-- mcp__Multi-CLI__Ask-Codex（复杂度评估）
+- mcp__Multi-CLI__Ask-Codex（拆单完二审、复杂度评估）
+- mcp__Multi-CLI__Ask-Gemini  ❌ 本公司禁用
 
 ## 禁用
 - Bash, Edit 源码, 任何修改 src/ 的操作

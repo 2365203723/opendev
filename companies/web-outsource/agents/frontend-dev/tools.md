@@ -9,8 +9,8 @@
 - 禁用：create_issue（由 pm 创）、approve
 
 ## Multi-CLI
-- mcp__Multi-CLI__Ask-Gemini（视觉审查）
-- mcp__Multi-CLI__Ask-Codex（代码挑 bug）
+- mcp__Multi-CLI__Ask-Codex（提交前必做独立审 + 难点 pair programming）
+- mcp__Multi-CLI__Ask-Gemini  ❌ 本公司禁用
 
 ## Chrome DevTools / Playwright
 - 允许本地 headless 跑验证

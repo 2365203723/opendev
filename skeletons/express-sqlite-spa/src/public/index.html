@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Demo Blogger</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main>
+    <section id="hero">
+      <div class="avatar" id="avatar"></div>
+      <h1 id="me-name">...</h1>
+      <p id="me-bio">...</p>
+      <nav id="social"></nav>
+    </section>
+
+    <section id="about">
+      <h2>关于</h2>
+      <p>这是一个用多 Agent 流水线交付的 MVP 博客。前端是原生 HTML/CSS/JS，后端是 Express + SQLite。</p>
+      <ul class="tags">
+        <li>Node.js</li><li>Express</li><li>SQLite</li><li>AI 工具链</li><li>外包交付</li>
+      </ul>
+    </section>
+
+    <section id="posts">
+      <h2>文章</h2>
+      <ul id="posts-list">加载中…</ul>
+    </section>
+
+    <section id="post-detail" hidden>
+      <button id="back-btn">← 返回文章列表</button>
+      <article id="post-body"></article>
+      <div id="post-actions"></div>
+      <section id="comments">
+        <h3>留言</h3>
+        <ul id="comments-list"></ul>
+        <form id="comment-form">
+          <input name="name" placeholder="你的名字" maxlength="60" required>
+          <textarea name="content" placeholder="说点什么…" maxlength="2000" rows="3" required></textarea>
+          <button type="submit">提交留言</button>
+          <p class="hint" id="comment-hint"></p>
+        </form>
+      </section>
+    </section>
+
+    <section id="contact">
+      <h2>联系我</h2>
+      <form id="contact-form">
+        <input name="name" placeholder="姓名" maxlength="60" required>
+        <input name="email" type="email" placeholder="邮箱" maxlength="120" required>
+        <textarea name="message" placeholder="你的留言" maxlength="4000" rows="4" required></textarea>
+        <button type="submit">发送</button>
+        <p class="hint" id="contact-hint"></p>
+      </form>
+    </section>
+  </main>
+<script src="/js/app.js"></script>
+</body>
+</html>

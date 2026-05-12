@@ -10,17 +10,13 @@
 - 禁用：create_issue, approve, reject
 
 ## Multi-CLI
-- mcp__Multi-CLI__Ask-Codex（安全）
-- mcp__Multi-CLI__Ask-Gemini（视觉）
+- mcp__Multi-CLI__Ask-Codex（双盲独立审，必做）
+- mcp__Multi-CLI__Ask-Gemini  ❌ 本公司禁用
 
 ## Chrome DevTools
-- 允许 take_screenshot / list_console_messages
-- 禁用 evaluate_script（避免污染页面状态）
-
-## 禁用
-- 任何 Edit/Write 在 src/ 下
-- 创建工单
-- 审批
+- 允许 take_screenshot / list_console_messages / evaluate_script（只读取 DOM）
+- 截图路径：`G:\qa-reports\<project>\screenshots\`
+- 若 MCP 不允许直写 G 盘，临时存 `%TEMP%` 再 Bash 移动
 
 ## 预算
-- $15/月（haiku 主力）
+- $25/月（升级因双盲机制 +token）
