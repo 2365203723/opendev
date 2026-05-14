@@ -4,6 +4,20 @@
 > **强制使用 model: "gpt-5.5-codex"**（即使不在 List-Codex-Models 输出中也可强制传入）。
 > 本系统不接受降级到旧模型——质量审查不打折。
 
+## 统一输出格式
+
+所有模板的输出必须包含以下字段（大小写固定）：
+
+```
+## VERDICT: APPROVE / APPROVE_WITH_NOTES / BLOCK
+## CRITICAL
+## HIGH
+## MEDIUM
+## SUMMARY
+```
+
+下游 agent 用 `grep "^## VERDICT"` 解析结果。
+
 ---
 
 ## 模板 A：Architect 设计二审
@@ -21,11 +35,12 @@ Focus:
 5. Concurrency/race conditions
 6. Anything that will bite during implementation
 
-Output 4 sections:
-- CRITICAL (must fix before dev starts)
-- HIGH (should fix)
-- NICE-TO-HAVE
-- VERDICT: APPROVE / APPROVE_WITH_NOTES / BLOCK
+Output (use exact headers):
+## VERDICT: APPROVE / APPROVE_WITH_NOTES / BLOCK
+## CRITICAL (must fix before dev starts)
+## HIGH (should fix)
+## MEDIUM (nice-to-have)
+## SUMMARY (200-word max)
 
 Write review to {OUTPUT_PATH}. Return 200-word summary.
 ```
@@ -43,13 +58,14 @@ Focus on HIGH+ issues:
 3. Error handling: silent swallow, missing status codes, unhandled promise
 4. DB: prepared statements, constraint violations handled, migration safety
 
-Output:
-- CRITICAL (blocking)
-- HIGH (should fix)
-- MEDIUM (note)
-- ACCEPT (what looks good)
+Output (use exact headers):
+## VERDICT: APPROVE / APPROVE_WITH_NOTES / BLOCK
+## CRITICAL (blocking)
+## HIGH (should fix)
+## MEDIUM (note)
+## SUMMARY
 
-Keep under 400 words.
+Under 400 words.
 ```
 
 ---
@@ -69,12 +85,12 @@ Check:
 3. Code quality: function >50 lines? file >800 lines? nesting >4?
 4. Production readiness concerns
 
-Output:
-- VERDICT: PASS / FAIL / PASS_WITH_WARNINGS
-- CRITICAL issues (blocking)
-- HIGH issues
-- MEDIUM observations
-- ACCEPT (what's good)
+Output (use exact headers):
+## VERDICT: PASS / FAIL / PASS_WITH_WARNINGS
+## CRITICAL (blocking)
+## HIGH
+## MEDIUM
+## SUMMARY
 
 Under 400 words.
 ```
@@ -94,12 +110,16 @@ Questions:
 3. Risky assumptions that should be escalated to architect?
 4. Missing non-functional work (rate-limit, CORS, input cap, error format)?
 
-Output:
+Output (use exact headers):
+## VERDICT: APPROVE / APPROVE_WITH_NOTES / BLOCK
+## CRITICAL
 - Missing step: (yes/no + which)
+## HIGH
 - Graph: (OK / suggested tweak)
 - Assumptions: (list)
+## MEDIUM
 - Non-functional gaps: (list)
-- Verdict: APPROVE / APPROVE_WITH_NOTES / BLOCK
+## SUMMARY
 
 Under 300 words.
 ```
@@ -118,12 +138,16 @@ Find:
 3. Missing items (no budget? no deadline? no "don't do" list?)
 4. Contradictions between sections
 
-Output:
+Output (use exact headers):
+## VERDICT: APPROVE / APPROVE_WITH_NOTES / BLOCK
+## CRITICAL
 - Multipliers found: (list with estimated extra effort)
+## HIGH
 - Ambiguous criteria: (list with suggested rewrite)
 - Missing: (list)
+## MEDIUM
 - Contradictions: (list)
-- Verdict: APPROVE / NEEDS_REVISION
+## SUMMARY
 
 Under 250 words.
 ```
@@ -149,11 +173,12 @@ OWASP Top 10 checklist:
 9. A09 Logging Failures: sensitive ops without audit trail
 10. A10 SSRF: server-side request forgery vectors
 
-Output:
-- VERDICT: PASS / FAIL / PASS_WITH_WARNINGS
-- CRITICAL (blocking, must fix)
-- HIGH (should fix before ship)
-- MEDIUM (acceptable risk if documented)
+Output (use exact headers):
+## VERDICT: PASS / FAIL / PASS_WITH_WARNINGS
+## CRITICAL (blocking, must fix)
+## HIGH (should fix before ship)
+## MEDIUM (acceptable risk if documented)
+## SUMMARY
 - Per-item OWASP status (A01-A10: PASS/FAIL/N-A)
 
 Write review to {OUTPUT_PATH}. Under 400 words.

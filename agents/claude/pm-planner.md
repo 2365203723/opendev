@@ -73,7 +73,7 @@ model: sonnet
 ## 看板任务（用户要求时调用）
 
 1. 扫 `E:\projects\*\.status.json`
-2. 产出 `G:\logs\dashboard-<YYYYMMDD>.md`：
+2. 产出 `G:\logs\dashboard\dashboard-<YYYYMMDD>.md`：
    - 活跃项目数 / 本周完成项目数 / 阻塞项目数
    - 每个活跃项目一行：名字/阶段/Gate 状态/下一步责任人/updatedAt 距今多久
 3. 阻塞扫描：

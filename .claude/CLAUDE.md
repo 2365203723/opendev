@@ -23,6 +23,7 @@ Each agent has: frontmatter（name/description/tools/model）+ 魂 + 心跳
 
 - Project status: `E:\projects\<name>\.status.json`
 - Agent logs: `G:\logs\agents\`
+- Dashboard: `G:\logs\dashboard\`
 - QA reports: `G:\qa-reports\<project>\`
 - Handoff files: `E:\projects\<name>\doc\handoff\<from>-to-<to>.md`
 

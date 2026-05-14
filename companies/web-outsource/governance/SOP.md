@@ -99,11 +99,19 @@ intake-analyst 会：
 Move-Item E:\projects\<客户名> I:\archive\2026\<客户名>
 ```
 
-## 七、新增子代理
+## 七、新增子代理（完整 checklist）
 
 1. 在 `C:\Users\23652\.claude\agents\<新角色>.md` 写 frontmatter（name/description/tools/model）
-2. 在魂里写职责边界 + 心跳流程
-3. 在 `H:\claude-assets\.claude\commands\go.md` 加一个 Phase 调用
+2. 写魂（职责边界 + 不处理什么）+ 心跳流程 + 工具边界 + 失败模式
+3. 心跳中 handoff 步骤必须引用 `governance/handoff-schema.md` 格式
+4. 在 `H:\claude-assets\.claude\commands\go.md` 加对应 Phase 调用
+5. 在 `governance/model-strategy.md` agent 表加一行
+6. 在 `governance/SOP.md` Phase 表加一行
+7. 在 `governance/init-project.ps1` agents 字段加一行
+8. 在 `H:\claude-assets\SYSTEM.md` agent 表加一行
+9. 如需 Codex 审查：在 `governance/codex-prompts.md` 加模板
+10. 在 `governance/quality-gates.md` 执行者表更新（如涉及 Gate）
+11. 在 `lessons/INDEX.md` 按角色表加一行
 
 ## 八、新增项目骨架
 
