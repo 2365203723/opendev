@@ -1,0 +1,26 @@
+{
+  "inboxDir": "E:\\intake",
+  "projectsDir": "E:\\projects",
+  "agentsDir": "C:\\Users\\23652\\.claude\\agents",
+  "logDir": "G:\\logs\\watcher",
+  "agentLogDir": "G:\\logs\\agents",
+  "lessonsDir": "H:\\claude-assets\\lessons",
+  "pollSeconds": 30,
+  "dailySpawnLimit": 20,
+  "maxConcurrentSpawns": 2,
+  "spawnCooldownMinutes": 10,
+  "loopDetectionRejectThreshold": 3,
+  "agentDirNames": {
+    "intake": "intake-analyst",
+    "ceo": "ceo",
+    "pm": "pm-planner",
+    "architect": "architect",
+    "frontend": "frontend",
+    "backend": "backend",
+    "qa": "qa-engineer",
+    "security": "security-engineer",
+    "reviewer": "reviewer",
+    "devops": "devops"
+  },
+  "pipeline": ["ceo", "pm", "architect", "backend", "frontend", "qa", "security", "reviewer", "devops"]
+}

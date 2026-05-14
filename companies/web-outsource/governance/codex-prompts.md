@@ -188,7 +188,7 @@ Write review to {OUTPUT_PATH}. Under 400 words.
 
 ## 使用方式
 
-heartbeat.md 里写：
+agent 定义文件（`C:\Users\23652\.claude\agents\<role>.md`）的心跳里写：
 ```
 调用 Ask-Codex，使用 governance/codex-prompts.md 模板 X，
 替换 {DESIGN_PATH} = E:\projects\<name>\doc\design.md

@@ -23,7 +23,7 @@
 
 ### 2. 读 Agent 定义
 
-读取 `H:\claude-assets\companies\web-outsource\agents\intake-analyst\heartbeat.md`，按其中的 5 阶段漏斗执行。
+读取 `C:\Users\23652\.claude\agents\intake-analyst.md`，按其中的 5 阶段漏斗执行。
 
 ### 3. 执行 Intake 5 阶段
 

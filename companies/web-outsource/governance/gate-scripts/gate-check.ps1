@@ -88,6 +88,7 @@ function Check-Gate3 {
     $results = @(
         Check-FileExists 'src\package.json' 'PACKAGE_JSON'
         Check-FileExists 'src\README.md' 'README'
+        Check-FileExists 'doc\acceptance-matrix.md' 'ACCEPTANCE_MATRIX'
     )
 
     $srcDir = Join-Path $Project 'src'
@@ -172,6 +173,15 @@ function Check-Gate4 {
 
     $results += (Check-FileExists 'README.md' 'README_EXISTS' $false)
     $results += (Check-FileExists 'src\README.md' 'SRC_README' $false)
+    $results += (Check-FileContains 'doc\acceptance-matrix.md' 'PASS' 'ACCEPTANCE_ALL_PASS' $false)
+
+    # Security review
+    $secReviewDir = "G:\qa-reports\$projName"
+    $secFile = Join-Path $secReviewDir 'security-review.md'
+    $secExists = Test-Path $secFile
+    $secDetail = 'missing'
+    if ($secExists) { $secDetail = 'file exists' }
+    $results += [pscustomobject]@{ id='SECURITY_REVIEW'; path=$secFile; pass=$secExists; blocker=$true; detail=$secDetail }
 
     $results
 }
@@ -184,6 +194,7 @@ function Check-Gate5 {
         (Check-FileExists '.dockerignore' 'DOCKERIGNORE' $false)
         (Check-FileExists '.env.example' 'ENV_EXAMPLE' $false)
         (Check-FileExists 'scripts\deploy.sh' 'DEPLOY_SCRIPT' $false)
+        (Check-FileExists 'doc\ops\monitoring.md' 'MONITORING_DOC' $true)
         (Check-FileExists 'scripts\rollback.sh' 'ROLLBACK_SCRIPT' $false)
         (Check-FileExists 'doc\ops\deploy.md' 'DEPLOY_DOC' $false)
         (Check-FileExists 'doc\ops\rollback.md' 'ROLLBACK_DOC' $false)
