@@ -1,49 +1,76 @@
-# 多 Agent 公司操作系统 · 架构白皮书
+# web-outsource 系统文档
 
-> 版本：v1.0
-> 日期：2026-05-09
-> 作者：Claude Code（与用户协作构建）
-> 状态：已跑通首个 MVP（Personal Blog），可复制
+> 版本 v2.0（2026-05-14）— 移除 Paperclip 后的精简版
 
-## 文档目录
+旧版 v1.0 文档（基于 Paperclip 工单系统）已归档到 `H:\claude-assets\_archive\docs-paperclip-era\`。
 
-本白皮书分四个文件：
+## 一、这是什么
 
-| 文件 | 谁读 | 内容 |
-|------|------|------|
-| [`01-overview.md`](./01-overview.md) | **所有人**，第一次接触本系统从这里开始 | 系统是什么、五层架构、核心设计理念 |
-| [`02-blueprint.md`](./02-blueprint.md) | **想复制这套系统的人** | 从零搭建的每一步，含命令、目录、文件模板 |
-| [`03-runbook.md`](./03-runbook.md) | **日常使用者** | 接单→拆单→实施→验收 的完整工作流，含 API 调用示例 |
-| [`04-reference.md`](./04-reference.md) | **想定制 / 扩展的人** | 目录结构、配置字段、Paperclip API、MCP 清单、已知限制 |
+一家"跑在文件系统上的"虚拟外包公司。客户把原始材料放到 `E:\intake\<客户>\raw\`，11 个 Claude 子代理通过 `/intake` 和 `/go` 命令接力完成接单→设计→开发→质检→交付。
 
-## 一句话理解
+**与旧版的区别**：
+- ❌ 旧版用 Paperclip API 创建 issue 流转任务（已弃用）
+- ✅ 新版用 `.status.json` + `doc\handoff\` 文件流转
 
-> 这是一家"跑在文件系统上的虚拟外包公司"。Paperclip 是它的 OA 系统，`H:\claude-assets` 是知识库，五个 soul/heartbeat 定义的 agent 是员工，你是 CEO 兼董事长。每跑一个项目，这家公司就更聪明一点。
+## 二、入口
 
-## 快速索引
+| 命令 | 作用 | 在哪定义 |
+|------|------|---------|
+| `/intake <客户名>` | 接入客户原始需求 → 出 requirements.md | `H:\claude-assets\.claude\commands\intake.md` |
+| `/go <项目名>` | 启动开发流水线 | `H:\claude-assets\.claude\commands\go.md` |
 
-**我想……**
+使用方式：
+```
+cd H:\claude-assets
+claude
+> /intake zhangsan
+> /go zhangsan
+```
 
-- 了解整体架构 → [01-overview.md § 系统架构图](./01-overview.md#二五层架构图)
-- 在新机器上搭一套 → [02-blueprint.md](./02-blueprint.md)
-- 接一个新订单跑起来 → [03-runbook.md § 新项目从 0 到交付](./03-runbook.md#一新项目从-0-到交付)
-- 新增一个角色（如 backend-dev）→ [04-reference.md § 新增 Agent](./04-reference.md#新增-agent)
-- 理解 Soul/Heartbeat 四件套 → [04-reference.md § Agent 四件套](./04-reference.md#agent-四件套)
-- Paperclip API 速查 → [04-reference.md § Paperclip API](./04-reference.md#paperclip-rest-api)
-- 已知限制与坑 → [04-reference.md § 已知限制](./04-reference.md#已知限制)
+## 三、子代理
 
-## 首次 MVP 产出物（作为参考样例）
+定义在 `C:\Users\23652\.claude\agents\<role>.md`（12 个），frontmatter 含模型分配。详见 `H:\claude-assets\SYSTEM.md`。
 
-- 项目：`E:\projects\personal-blog\`
-- 章程：`doc/charter.md` · 计划：`doc/plan.md` · 设计：`doc/design.md` · 验收：`doc/acceptance.md`
-- 审查报告：`G:\qa-reports\personal-blog\review-001.md`
-- 经验沉淀：`H:\claude-assets\lessons\{pm,frontend-dev,reviewer}.md`
+Handoff 文件格式：`governance\handoff-schema.md`（强标准，6 字段必填）。
 
-## 复制这套方案需要的条件
+## 四、关键路径
 
-- Windows 10/11 + 分区 ≥ 5 个（建议 7 个）
-- Node.js 20+
-- Claude Code CLI + 订阅
-- npm 全局：`paperclipai`
-- 管理员权限一次（建软链用）
-- 约 2 小时搭建时间
+```
+E:\intake\<客户>\raw\          原始材料入口
+E:\intake\<客户>\work\         intake-analyst 工作目录
+E:\projects\<项目>\            项目目录
+  .status.json                 状态机（agent 流转 + Gate 状态）
+  doc\
+    requirements.md            intake 产出
+    charter.md                 CEO 写
+    prd.md                     Strategist 写（medium+）
+    design.md                  Architect 写
+    plan.md                    PM 写
+    handoff\<from>-to-<to>.md  交接文件
+  src\                         Dev 写代码
+G:\qa-reports\<项目>\          QA/Reviewer 报告
+H:\claude-assets\              本资产库
+  companies\web-outsource\
+    governance\                操作手册
+    scripts\                   工具脚本
+    watcher\                   inbox 通知器
+  lessons\                     跨项目经验库
+  skeletons\                   可复用项目骨架
+  snippets\                    可复用代码片段
+I:\archive\                    交付项目归档
+```
+
+## 五、操作手册
+
+- 模型策略：`companies\web-outsource\governance\model-strategy.md`
+- Codex 调用：`companies\web-outsource\governance\codex-prompts.md`
+- 质量门：`companies\web-outsource\governance\quality-gates.md`
+- 状态追踪：`companies\web-outsource\governance\status-tracking.md`
+
+## 六、新建项目
+
+```powershell
+H:\claude-assets\companies\web-outsource\governance\init-project.ps1 -Name myproject
+```
+
+会创建目录结构 + `.status.json` 占位 + `charter.md` 占位。然后用 `/intake myproject` 接入需求。

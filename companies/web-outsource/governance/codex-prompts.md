@@ -1,7 +1,8 @@
 # Codex Prompt 模板库
 
 > 所有 agent 调 Ask-Codex 时从这里复制 prompt 骨架，填入具体路径即可。
-> 模型默认 gpt-5.5，超时 fallback gpt-5.4。
+> **强制使用 model: "gpt-5.5-codex"**（即使不在 List-Codex-Models 输出中也可强制传入）。
+> 本系统不接受降级到旧模型——质量审查不打折。
 
 ---
 
@@ -129,6 +130,37 @@ Under 250 words.
 
 ---
 
+## 模板 F：Security Engineer 安全渗透审
+
+```
+You are an independent security auditor (OSCP-level). Audit:
+- {SRC_PATH} (all source files)
+- {CHARTER_PATH} (to understand what data is handled)
+
+OWASP Top 10 checklist:
+1. A01 Broken Access Control: horizontal/vertical privilege escalation
+2. A02 Cryptographic Failures: plaintext secrets, weak hashing, missing HTTPS
+3. A03 Injection: SQL/NoSQL/OS/LDAP injection vectors
+4. A04 Insecure Design: business logic flaws, race conditions
+5. A05 Security Misconfiguration: CSP/CORS/HSTS/X-Frame-Options headers
+6. A06 Vulnerable Components: known CVEs in dependencies
+7. A07 Auth Failures: session management, token expiry, brute force
+8. A08 Data Integrity: deserialization, CI/CD security
+9. A09 Logging Failures: sensitive ops without audit trail
+10. A10 SSRF: server-side request forgery vectors
+
+Output:
+- VERDICT: PASS / FAIL / PASS_WITH_WARNINGS
+- CRITICAL (blocking, must fix)
+- HIGH (should fix before ship)
+- MEDIUM (acceptable risk if documented)
+- Per-item OWASP status (A01-A10: PASS/FAIL/N-A)
+
+Write review to {OUTPUT_PATH}. Under 400 words.
+```
+
+---
+
 ## 使用方式
 
 heartbeat.md 里写：
@@ -138,3 +170,33 @@ heartbeat.md 里写：
 替换 {CHARTER_PATH} = E:\projects\<name>\doc\charter.md
 替换 {OUTPUT_PATH} = E:\projects\<name>\doc\design-review-codex.md
 ```
+
+---
+
+## 降级链与失败处理
+
+**本系统强制使用 `gpt-5.5-codex`，不降级。**
+
+理由：质量审查是 web-outsource 的核心护城河，降级到旧模型 = 漏 bug = 客户投诉 = 返工成本远高于 Codex 调用费。
+
+调用方式：
+```
+Ask-Codex(model: "gpt-5.5-codex", prompt: "...")
+```
+
+**Codex 调用失败时的处理**：
+
+1. 第一次失败 → 重试 1 次（180s 超时）
+2. 第二次失败 → **立即停止当前 agent 工作**：
+   - 在输出文件第一行加 `[CODEX-UNAVAILABLE]`
+   - 在 `.status.json` 标记当前 agent.status=blocked, blockReason="codex-unavailable"
+   - 写 handoff 文件给父代理：「Codex 不可用，需人工介入：检查 Multi-CLI 服务、确认 OpenAI API 状态」
+   - 不继续走流程（不写 charter / design / 提交代码），等用户决定
+
+**不允许的退路**：
+- ❌ 用旧模型（gpt-5.4 / gpt-5.3）继续
+- ❌ 跳过 Codex 审直接交付
+- ❌ 让 Claude 自己审充当 Codex（破坏双盲）
+
+如果用户明确指示"先跳过 Codex 审"，可以执行，但必须在 handoff 文件标记「跳过 Codex 审-用户授权」并在 .status.json gates 字段标 warning。
+

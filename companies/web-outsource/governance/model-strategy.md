@@ -1,112 +1,66 @@
-# 模型与协商策略（公司级，2026-05-11 生效）
+# 模型策略（公司级，2026-05-14 生效）
 
 > 公司：web-outsource
 > 修订人：CEO
-> 适用范围：所有 agent 的每次 heartbeat
+> 适用范围：所有子代理调用
 
 ---
 
-## 一、模型分配（"关键时刻用 Opus" + Codex 全员双盲）
+## 一、模型分配（固定，不动态升降级）
 
-| 角色 | 日常模型 | 升 Opus 的条件 | Codex 角色 |
-|------|----------|---------------|-----------|
-| CEO | Sonnet | 首单客户 · 单价 > $1000 · 章程歧义解读 | 章程写完后 Codex 独立审，抓隐藏倍增器 |
-| PM | Sonnet | — | 工单拆分完 Codex 挑"是否漏环节" |
-| Architect | **Opus**（默认） | 关键设计永远 Opus | design.md 写完 Codex 独立审架构 |
-| Frontend/Backend Dev | Sonnet | 性能 / 算法 / 并发关键点 | 难点 pair programming；代码提交前 diff 过 Codex |
-| Code Reviewer | Sonnet | — | **双盲**：Reviewer 独立审 + Codex 独立审 → 合议 |
-| Security Reviewer | Sonnet | auth / 支付 / 加密相关 | **双盲**：必做 |
-| Visual Reviewer / Doc / Archive | Haiku | — | 不用（机械活）|
+每个子代理在它的定义文件 `C:\Users\23652\.claude\agents\<role>.md` 的 frontmatter 里固定一个模型。父代理通过 Agent tool 调用时使用该模型。
 
-**原则：** Opus 贵 5x Sonnet，只用在"错了代价高"的节点；Haiku 便宜 3x Sonnet，用在"错了容易发现"的节点。
+| 子代理 | 模型 | 理由 |
+|-------|------|------|
+| ceo | sonnet | 决策类，不需要 opus 推理深度 |
+| pm-planner | sonnet | 拆分任务模式化 |
+| product-strategist | sonnet | 调研+整理，sonnet 够 |
+| ux-designer | sonnet | 视觉/结构 |
+| **architect** | **opus** | 架构决策错代价最高 |
+| frontend | sonnet | 实现类，按 design 执行 |
+| backend | sonnet | 实现类，按 design 执行 |
+| qa-engineer | sonnet | 测试模板化 |
+| security-engineer | sonnet | 安全审计需推理但不需 opus |
+| reviewer | sonnet | 独立审 + Codex 双盲已保证质量 |
+| **devops** | **haiku** | Dockerfile/compose 高度模板化 |
+| intake-analyst | sonnet | 与用户交互问问题 |
 
-## 二、Codex 双盲验证（全员必做的场景）
+**原则**：
+- Opus 贵 5x Sonnet，只用在"错了代价高"的节点（架构）
+- Haiku 便宜 3x Sonnet，用在"错了容易发现"的节点（运维、汇总）
+- 其他角色一律 Sonnet
 
-### 场景 A —— Architect 设计后
+## 二、为什么不动态升降级
 
-```
-Opus 写 design.md v1
-  ↓
-调用 Ask-Codex："扮演独立架构师，审 E:\projects\<name>\doc\design.md，指出:
-  1. 技术选型是否有更好候选
-  2. 数据模型是否有遗漏字段
-  3. API 契约是否有边界漏洞
-  4. 安全/性能/可维护性隐患
-  输出到 doc/design-review-codex.md"
-  ↓
-Opus 读 codex 报告，决定接受/拒绝/折中 → design.md v2
-  ↓
-若 Codex 报"CRITICAL" 而 Opus 不认同 → 升级 CEO 裁决
-```
+之前的方案有"首单升 opus"、"auth 升 opus"、"夜间 cheap 档"等动态规则——实际运行时：
 
-### 场景 B —— Dev 完成工单提交前
+1. 父代理判断不准（不知道是不是首单）
+2. 子代理读 frontmatter 的 model 字段，外部规则改不动
+3. 增加心智负担，用户搞不清这单到底花了多少钱
 
-```
-Dev (Sonnet) 写完 → self-check 通过
-  ↓
-调用 Ask-Codex："独立审 src/<改动文件>，列 HIGH+ 问题"
-  ↓
-Dev 读 codex 意见，改或拒绝（在工单 comment 留决策理由）
-  ↓
-status=done
-```
+固定模型的好处：
+- 每单成本可预测
+- 调试简单（出问题一眼看出是哪个模型不行）
+- 子代理定义文件就是单一真相源
 
-### 场景 C —— Code/Security Reviewer 双盲
+## 三、Codex 强制 gpt-5.5-codex
 
-```
-Reviewer (Sonnet) 独立审 → review-claude.md
-Ask-Codex 独立审（不看 Claude 报告）→ review-codex.md
-  ↓
-Reviewer 合议：
-  - 一致 PASS → 通过
-  - 一致 CRITICAL → 必修
-  - 分歧 → 升级 CEO 加 Opus 裁决（不用 Gemini）
-```
+详见 `codex-prompts.md`。不降级、不跳过、不让 Claude 自审充当 Codex。
 
-## 三、Codex 调用规范
+## 四、如果某个 Phase 需要更强模型
 
-- **默认模型：`gpt-5.5`**（Codex CLI 实际支持的最新最强档；`mcp__Multi-CLI__List-Codex-Models` 是手工维护的列表会滞后，以 CLI 实际可用为准）
-- 若 `gpt-5.5` 不可用 fallback 到 `gpt-5.4`
-- 对异厂第二只眼的质量不打折 —— GPT 系列成本相对 Claude Opus 很低，值得用最强档
-- prompt 中明确告诉 Codex：
-  1. 它的角色（独立审查/结对/裁决）
-  2. 要看的文件路径（Codex 有文件系统权限，自己 read）
-  3. 输出格式（文件路径或结构化意见）
-- **不直接给 Codex 贴代码**，让它自己 read，避免上下文撑爆
+不要改 model-strategy.md，而是：
 
-## 三·A、运行档位（profile，手动切换）
+1. **临时**：父代理调 Agent tool 时显式传 `model: "opus"` 覆盖默认
+   ```
+   Agent({ subagent_type: "backend", model: "opus", prompt: "...性能算法关键..." })
+   ```
 
-**当前运行档：`Turbo`（唯一启用档）**
+2. **永久**：编辑该子代理定义文件 frontmatter 的 model 字段
 
-其他档位保留定义，按需手动切换（目前不启用自动降档）：
+## 五、不再使用 Gemini
 
-| 档位 | CEO | PM | Architect | Dev | Reviewer | Codex 双审 | 适用场景 |
-|------|-----|-----|-----------|-----|----------|-----------|---------|
-| **Turbo** ✓ | Sonnet | Sonnet | **Opus** | Sonnet | Sonnet | gpt-5.5 | 默认，质量优先 |
-| Night | Haiku | Haiku | Sonnet | Sonnet | Haiku | gpt-5.4 | 保留备用（未来无人值守用）|
-| Cheap | Haiku | Haiku | Haiku | Haiku | Haiku | gpt-5.4-mini | 保留备用 |
-| Off | — | — | — | — | — | — | 停机维护 |
-
-**切档方式**：编辑本文件"当前运行档"一行。目前无自动切换逻辑；想切夜间自动降档，等未来开全自动时再做。
-
-## 四、升级路径（谁裁决）
-
-```
-Sonnet vs Codex 分歧
-  └→ Opus（Claude 4.7）裁决
-       └→ 仍分歧 → CEO 人工决策（工单 comment 通知用户）
-```
-
-Gemini 暂不启用。
-
-## 五、禁用场景（节省成本）
-
-- Reviewer 对纯文档类工单（README、注释更新）**不触发 Codex 双盲**
-- Dev 对"改 1-2 行小 bug"**不触发 Codex pair**
-- Haiku 角色（Visual/Doc/Archive）永不调 Codex
-
-## 六、成本护栏
-
-- 单 MVP 预算 $2（超 50%)
-- 单客户订单 / 卖价 > 0.5% 要 CEO 审批
-- 日预算由 watcher 监控，详见 `governance/budget.md`
+理由：
+- Codex 双盲已经覆盖"异厂第二只眼"的需求
+- 多一家供应商 = 多一个失败模式
+- Gemini 在 web 后端审查上的精度低于 Codex

@@ -110,9 +110,22 @@ Discovery ──[Gate 1]──► Design ──[Gate 2]──► Build ──[Ga
 
 ---
 
+## 复杂度降级矩阵
+
+| complexity | Gate 1 | Gate 2 | Gate 3 | Gate 4 | Gate 5 |
+|---|---|---|---|---|---|
+| tiny | **跳过**（无 PRD） | 跳过 UX 4 项，只查 design.md + Codex 审 | 正常 | 正常 | 正常 |
+| small | 只查 charter ≥10 条验收 + CEO 签字 | 正常 | 正常 | 正常 | 正常 |
+| medium | 正常 | 正常 | 正常 | 正常 | 正常 |
+| large | 正常 | 正常 | 正常 | 正常 | 正常 |
+
+charter.md 第二行必须声明 `mvp: true|false`。QA/Reviewer 读此字段决定是否应用 MVP 降级阈值。
+
+---
+
 ## MVP 降级规则
 
-对于 MVP / 系统测试 / 预算 < $500 的项目，以下门可降级：
+对于 MVP / 系统测试 / 预算 < $500 的项目（charter.md 标注 `mvp: true`），以下门可降级：
 
 | Gate | 可降级项 | 降级为 |
 |------|---------|--------|
@@ -134,5 +147,5 @@ Discovery ──[Gate 1]──► Design ──[Gate 2]──► Build ──[Ga
 | 1 | Product Strategist | — | CEO |
 | 2 | UX + Architect | Codex | CEO |
 | 3 | QA Engineer | Codex | Architect |
-| 4 | QA + UX + Reviewer | Codex | CEO |
+| 4 | QA + Security Engineer + Reviewer | Codex | CEO |
 | 5 | DevOps | — | CEO |
