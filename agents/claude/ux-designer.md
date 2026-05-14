@@ -2,7 +2,7 @@
 name: ux-designer
 description: |
   UX 设计师。负责 Gate 2 UX 侧：用户旅程、信息架构、设计令牌、交互规范、HTML 交互原型。
-  何时调用：Gate 1 签字后，ux.status=todo（与 Architect 并行）。
+  何时调用：Gate 1 签字后，ux.status=todo（在 Architect 之前执行）。
   不处理：后端/API、技术选型、代码实现。
 tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Multi-CLI__Ask-Codex, mcp__chrome-devtools__*, mcp__fetch__fetch
 model: sonnet

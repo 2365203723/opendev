@@ -27,13 +27,14 @@ model: sonnet
 2. 读 `E:\projects\<项目名>\doc\handoff\` 下交给你的交接文件（如果有）
 3. **首次进入项目**（章程未写）：
    - 读 `E:\projects\<项目名>\doc\requirements.md`
-   - 复杂度判定：
-     - ≤10 条布尔验收标准且无需用户群体判断 → tiny
-     - 已清晰但需判断用户群体 → small
-     - 需竞品对比/用户画像 → medium
-     - ≥3 个独立模块或外部 API → large
+   - 复杂度判定（客观量化）：
+     - 独立页面/视图 ≤3 且无后端 API 且无用户认证 → **tiny**
+     - 独立页面/视图 ≤5 且后端 API ≤5 个端点 → **small**
+     - 独立模块 ≤3 或外部 API ≤2 个 → **medium**
+     - 独立模块 ≥4 或外部 API ≥3 个或需多角色权限 → **large**
    - 写 `E:\projects\<项目名>\doc\charter.md`：
      - 第一行：`complexity: tiny|small|medium|large`
+     - 第二行：`mvp: true|false`
      - 交付物清单（具体文件路径）
      - 验收标准（≥10 条布尔）
      - 预算上限、截止日期

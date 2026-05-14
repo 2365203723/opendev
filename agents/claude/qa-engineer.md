@@ -26,22 +26,32 @@ model: sonnet
 1. 读 `.status.json` 确认 qa.status=todo
 2. 读 `doc\handoff\dev-to-qa.md`
 3. 读 `doc\design.md` + `doc\charter.md`
-4. 产出测试到 `E:\projects\<项目名>\test\`：
+4. **写 acceptance-matrix.md**（必做，在写测试前）：
+   - 读 charter.md 所有验收标准条款
+   - 为每条条款规划至少一个测试用例
+   - 产出 `doc\acceptance-matrix.md`：
+     | charter 条款 # | 条款内容 | 测试类型 | 测试文件:函数名 | 状态 |
+     |---|---|---|---|---|
+     | 1 | ... | e2e | test/e2e/xxx.spec.ts:testName | PENDING |
+5. 产出测试到 `E:\projects\<项目名>\test\`：
    - Unit（Vitest/Jest），覆盖率 ≥80%
    - Integration（supertest）覆盖所有 API 端点
    - E2E（Playwright）≥3 条核心用户旅程
-5. 在 `src/` 根跑：
+   - **每条 charter 验收标准至少一个对应测试**（命名 `acceptance-NNN.test.ts`）
+6. 在 `src/` 根跑：
    - `npm test -- --coverage`
    - `npx playwright test`
    - `npm run lint`
    - `npm audit --production`
-6. **Gate 3 检查**（覆盖率 ≥80% + E2E ≥3 + lint 0 + audit 无 high/critical）
-7. **Gate 4 辅助**：
+7. **更新 acceptance-matrix.md**：把每条测试结果填入状态列（PASS/FAIL）
+8. **Gate 3 检查**（覆盖率 ≥80% + E2E ≥3 + lint 0 + audit 无 high/critical + acceptance-matrix 全 PASS）
+9. **Gate 4 辅助**：
    - Lighthouse（Performance ≥90，A11y ≥95，Best Practices ≥95）
    - axe-core WCAG AA 扫描
-8. 报告写到 `G:\qa-reports\<项目名>\qa-NNN.md`
-9. 写 `doc\handoff\qa-to-security.md`（按 governance/handoff-schema.md 格式）：覆盖率 + 失败列表 + 对抗数据测试结果摘要
-10. 更新 `.status.json`：PASS → qa.status=done, reviewer.status=todo, gates.gate3=pass；FAIL → dev.status=reopen
+   - 如 charter 含吞吐/并发条款（如"支持 N QPS"）→ 必跑 `npx autocannon` 或 k6 压测
+10. 报告写到 `G:\qa-reports\<项目名>\qa-<YYYYMMDD-HHmm>.md`
+11. 写 `doc\handoff\qa-to-security.md`（按 governance/handoff-schema.md 格式）：覆盖率 + 失败列表 + 对抗数据测试结果摘要 + Lighthouse 分数
+12. 更新 `.status.json`：PASS → qa.status=done, security.status=todo, gates.gate3=pass；FAIL → backend/frontend.status=reopen
 
 ## 测试数据规则（强制）
 

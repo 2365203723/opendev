@@ -33,7 +33,7 @@ model: sonnet
 5. 读 `H:\claude-assets\lessons\backend.md`（如存在）
 6. 扫 `H:\claude-assets\skeletons\` 和 `H:\claude-assets\snippets\`
 7. 在 `E:\projects\<项目名>\src\` 实现后端部分：
-   - 数据库 schema + migration 脚本（`migrations/` 或 init 脚本）
+   - 数据库 schema + migration 脚本（`migrations/` 或 init 脚本）— 如 design.md 有 DDL 则必须有对应 migration，不能只有裸 DDL
    - API 路由（按 design.md 契约表）
    - 认证/会话（如需要）
    - 限流（如需要）

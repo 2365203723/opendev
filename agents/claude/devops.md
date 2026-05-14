@@ -32,14 +32,19 @@ model: haiku
    - `.env.example`（列所有必需变量）
    - `scripts/deploy.sh`、`scripts/rollback.sh`
    - `doc/ops/deploy.md` + `doc/ops/rollback.md`
+   - `doc/ops/monitoring.md`（日志格式 + 错误告警规则 + 关键指标）
 4. 健康检查：`/health` 端点返 200 + 业务端口检查
-5. **Gate 5 检查**：
+5. **监控就绪**：
+   - 确认日志输出为结构化 JSON（或至少有时间戳+级别）
+   - 写 `doc/ops/monitoring.md`：关键指标（QPS/错误率/延迟 P99）+ 告警阈值 + 日志查询示例
+6. **Gate 5 检查**：
    - `docker build` 成功
    - `curl /health` 返回 200
    - `.env.example` 完整
    - 回滚方案有文档
-6. 写 `doc\handoff\devops-to-ceo.md`（按 governance/handoff-schema.md 格式）：部署文档摘要
-7. 更新 `.status.json`：devops.status=done, gates.gate5=pass, phase=delivered
+   - `doc/ops/monitoring.md` 存在
+7. 写 `doc\handoff\devops-to-ceo.md`（按 governance/handoff-schema.md 格式）：部署文档摘要
+8. 更新 `.status.json`：devops.status=done, gates.gate5=pass, phase=delivered
 
 ## 工具边界
 

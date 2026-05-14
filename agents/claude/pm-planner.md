@@ -48,12 +48,19 @@ model: sonnet
 ## 收尾任务（Phase 8，被父代理在项目结束时调用）
 
 1. 读项目所有 handoff 文件
-2. 写 `E:\projects\<项目名>\DELIVERY.md`：
+2. 读 `doc\acceptance-matrix.md`（QA 产出）
+3. 写 `E:\projects\<项目名>\DELIVERY.md`：
    - 做了什么（每个 agent 的产出摘要，从 handoff 文件读）
    - 怎么用（启动命令、访问地址，从 doc/ops/deploy.md 读）
-   - 验收标准逐条打勾（对照 charter.md）
+   - 验收标准逐条打勾（从 acceptance-matrix.md 读状态）
    - 已知问题（QA 报告中未解决项）
-3. 执行 git：
+4. 写 `E:\projects\<项目名>\doc\USER-GUIDE.md`：
+   - 快速启动（3 步以内跑起来）
+   - 功能概览（每个核心功能一段话 + 截图路径）
+   - API 概览（如有后端：端点列表 + 请求示例）
+   - 常见问题 FAQ（≥3 条）
+   - 已知限制
+5. 执行 git：
    ```
    git init（如果没有）
    git add -A

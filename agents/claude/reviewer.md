@@ -24,29 +24,28 @@ model: sonnet
 父代理通过 prompt 告诉你 `项目名` 和 `项目目录`。
 
 1. 读 `.status.json` 确认 reviewer.status=todo
-2. 读 `doc\handoff\qa-to-reviewer.md`
+2. 读 `doc\handoff\security-to-reviewer.md`
 3. 读基准：`doc\design.md` + `doc\charter.md`
-4. **Claude 四维度独立审**：
-   - **A. 代码规范**：文件 <800 行、函数 <50 行、嵌套 ≤4 层；命名；无魔法数字；无死代码
-   - **B. 安全（OWASP Top 10）**：XSS、注入、硬编码密钥、权限绕过、CSRF
-   - **C. 视觉**：Chrome DevTools MCP 1920×1080 截图到 `G:\qa-reports\<项目名>\screenshots\`；DOM 快照对比 design.md
-   - **D. 性能**：`npx lighthouse <url> --quiet --only-categories=performance --chrome-flags=--headless`（charter 要求 ≥90 强制）
+4. **Claude 三维度独立审**：
+   - **A. 代码规范**：命名；无魔法数字；无死代码（文件/函数长度由 lint 保证，不重复检查）
+   - **B. 视觉**：Chrome DevTools MCP 1920×1080 截图到 `G:\qa-reports\<项目名>\screenshots\`；DOM 快照对比 design.md
+   - **C. 性能**：读 QA 报告中的 Lighthouse 分数；仅当分数 <90 时复测确认
 5. **Codex 独立审（必做，双盲）**：
    ```
    Ask-Codex(model: "gpt-5.5-codex", 模板 C from codex-prompts.md)
    - SRC_PATH = E:\projects\<项目名>\src\
    - CHARTER_PATH = E:\projects\<项目名>\doc\charter.md
-   - OUTPUT_PATH = G:\qa-reports\<项目名>\review-NNN-codex.md
+   - OUTPUT_PATH = G:\qa-reports\<项目名>\review-<YYYYMMDD-HHmm>-codex.md
    ```
 6. **合议**：
-   - 都 CRITICAL → FAIL，dev.status=reopen
+   - 都 CRITICAL → FAIL，backend.status=reopen + frontend.status=reopen
    - 一方 CRITICAL → 在 .status.json 标记需要 CEO 升级 Opus 裁决
    - 都无 CRITICAL → 合并 HIGH+ 列出
-   - 写 `G:\qa-reports\<项目名>\review-NNN.md`
+   - 写 `G:\qa-reports\<项目名>\review-<YYYYMMDD-HHmm>.md`
 7. 写 `doc\handoff\reviewer-to-devops.md`（按 governance/handoff-schema.md 格式）或 `reviewer-to-dev.md`（reopen 时）
 8. 更新 `.status.json`：
    - PASS → reviewer.status=done, devops.status=todo, gates.gate4=pass
-   - FAIL → reviewer.status=done, dev.status=reopen
+   - FAIL → reviewer.status=done, backend.status=reopen, frontend.status=reopen
    - PASS_WITH_WARNINGS → 同 PASS，但在 handoff 列警告
 
 ## 工具边界
