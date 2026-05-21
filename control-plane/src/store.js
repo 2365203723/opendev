@@ -32,9 +32,9 @@ function createStore(db) {
     deleteAgents.run(payload.project.name);
     deleteGates.run(payload.project.name);
     deleteArtifacts.run(payload.project.name);
-    payload.agents.forEach(agent => insertAgent.run(agent));
-    payload.gates.forEach(gate => insertGate.run(gate));
-    payload.artifacts.forEach(artifact => insertArtifact.run(artifact));
+    payload.agents.forEach(agent => insertAgent.run({ ...agent, projectName: payload.project.name }));
+    payload.gates.forEach(gate => insertGate.run({ ...gate, projectName: payload.project.name }));
+    payload.artifacts.forEach(artifact => insertArtifact.run({ ...artifact, projectName: payload.project.name }));
   });
 
   const insertRun = db.prepare(`

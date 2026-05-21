@@ -18,11 +18,13 @@ afterEach(() => {
 });
 
 describe('SQLite store', () => {
-  it('creates schema and enables WAL', () => {
+  it('creates schema and enables WAL with foreign keys', () => {
     const journalMode = db.pragma('journal_mode', { simple: true });
+    const foreignKeys = db.pragma('foreign_keys', { simple: true });
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map(row => row.name);
 
     expect(journalMode.toLowerCase()).toBe('wal');
+    expect(foreignKeys).toBe(1);
     expect(tables).toEqual([
       'agents',
       'artifacts',
@@ -83,6 +85,43 @@ describe('SQLite store', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM agents').get().count).toBe(0);
     expect(db.prepare('SELECT COUNT(*) AS count FROM gates').get().count).toBe(0);
     expect(db.prepare('SELECT COUNT(*) AS count FROM artifacts').get().count).toBe(0);
+  });
+
+  it('uses project name from payload for child rows', () => {
+    const store = createStore(db);
+
+    store.replaceProjectIndex({
+      project: {
+        name: 'demo',
+        rootPath: 'E:/projects/demo',
+        phase: 'build',
+        complexity: 'small',
+        reopenCount: 1,
+        updatedAt: '2026-05-22T01:00:00.000Z'
+      },
+      agents: [
+        { projectName: 'wrong', name: 'backend', status: 'done', lastRun: '2026-05-22T00:00:00.000Z', blockReason: null }
+      ],
+      gates: [
+        { projectName: 'wrong', name: 'gate3', status: 'pass', evidencePath: 'E:/projects/demo/doc/acceptance-matrix.md' }
+      ],
+      artifacts: [
+        { projectName: 'wrong', type: 'status', path: 'E:/projects/demo/.status.json', hash: 'abc', mtimeMs: 1, summary: 'phase=build' }
+      ]
+    });
+
+    expect(store.listAgents('demo')).toEqual([
+      { projectName: 'demo', name: 'backend', status: 'done', lastRun: '2026-05-22T00:00:00.000Z', blockReason: null }
+    ]);
+    expect(store.listGates('demo')).toMatchObject([
+      { projectName: 'demo', name: 'gate3', status: 'pass', evidencePath: 'E:/projects/demo/doc/acceptance-matrix.md' }
+    ]);
+    expect(store.listArtifacts('demo')).toMatchObject([
+      { projectName: 'demo', type: 'status', path: 'E:/projects/demo/.status.json', hash: 'abc', mtimeMs: 1, summary: 'phase=build' }
+    ]);
+    expect(store.listAgents('wrong')).toEqual([]);
+    expect(store.listGates('wrong')).toEqual([]);
+    expect(store.listArtifacts('wrong')).toEqual([]);
   });
 
   it('lists indexed project details and run history', () => {
