@@ -37,6 +37,33 @@ function collectDashboard(store, config) {
   };
 }
 
+function validateRunPayload(body) {
+  if (!body || Object.prototype.toString.call(body) !== '[object Object]' || Object.getPrototypeOf(body) !== Object.prototype) {
+    return { error: 'body must be a plain object' };
+  }
+
+  const allowedFields = new Set(['commandType', 'targetName']);
+  const unknownField = Object.keys(body).find(field => !allowedFields.has(field));
+  if (unknownField) {
+    return { error: `unknown field: ${unknownField}` };
+  }
+
+  if (!['intake', 'go', 'recover'].includes(body.commandType)) {
+    return { error: 'invalid commandType' };
+  }
+
+  if (typeof body.targetName !== 'string') {
+    return { error: 'invalid targetName' };
+  }
+
+  const targetName = body.targetName.trim();
+  if (targetName.length < 1 || targetName.length > 120 || !/^[\p{L}\p{N}_-]+$/u.test(targetName)) {
+    return { error: 'invalid targetName' };
+  }
+
+  return { payload: { commandType: body.commandType, targetName } };
+}
+
 function createApp(dependencies) {
   const app = express();
   const { config, store, indexer, runner } = dependencies;
@@ -114,7 +141,12 @@ function createApp(dependencies) {
         res.status(503).json({ error: 'runner unavailable' });
         return;
       }
-      const run = await runner.start(req.body);
+      const validation = validateRunPayload(req.body);
+      if (validation.error) {
+        res.status(400).json({ error: validation.error });
+        return;
+      }
+      const run = await runner.start(validation.payload);
       res.status(202).json(run);
     } catch (error) {
       next(error);
