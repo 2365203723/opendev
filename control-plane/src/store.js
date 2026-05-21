@@ -27,7 +27,7 @@ function createStore(db) {
     VALUES (@projectName, @type, @path, @hash, @mtimeMs, @summary)
   `);
 
-  const replaceProjectIndexTxn = db.transaction(payload => {
+  const replaceProjectIndexPayload = payload => {
     upsertProject.run(payload.project);
     deleteAgents.run(payload.project.name);
     deleteGates.run(payload.project.name);
@@ -35,6 +35,14 @@ function createStore(db) {
     payload.agents.forEach(agent => insertAgent.run({ ...agent, projectName: payload.project.name }));
     payload.gates.forEach(gate => insertGate.run({ ...gate, projectName: payload.project.name }));
     payload.artifacts.forEach(artifact => insertArtifact.run({ ...artifact, projectName: payload.project.name }));
+  };
+
+  const replaceProjectIndexTxn = db.transaction(payload => {
+    replaceProjectIndexPayload(payload);
+  });
+
+  const replaceProjectIndexesTxn = db.transaction(projectIndexes => {
+    projectIndexes.forEach(replaceProjectIndexPayload);
   });
 
   const insertRun = db.prepare(`
@@ -49,6 +57,7 @@ function createStore(db) {
 
   return {
     replaceProjectIndex: payload => replaceProjectIndexTxn(payload),
+    replaceProjectIndexes: projectIndexes => replaceProjectIndexesTxn(projectIndexes),
     listProjects: () => db.prepare(`
       SELECT name, root_path AS rootPath, phase, complexity, reopen_count AS reopenCount, updated_at AS updatedAt
       FROM projects

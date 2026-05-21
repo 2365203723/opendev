@@ -124,6 +124,45 @@ describe('SQLite store', () => {
     expect(store.listArtifacts('wrong')).toEqual([]);
   });
 
+  it('rolls back all project indexes when one project fails during batch replacement', () => {
+    const store = createStore(db);
+
+    expect(() => store.replaceProjectIndexes([
+      {
+        project: {
+          name: 'first',
+          rootPath: 'E:/projects/first',
+          phase: 'build',
+          complexity: 'small',
+          reopenCount: 0,
+          updatedAt: '2026-05-22T01:00:00.000Z'
+        },
+        agents: [],
+        gates: [],
+        artifacts: [
+          { projectName: 'first', type: 'status', path: 'E:/projects/first/.status.json', hash: 'abc', mtimeMs: 1, summary: 'phase=build' }
+        ]
+      },
+      {
+        project: {
+          name: 'second',
+          rootPath: 'E:/projects/second',
+          phase: 'build',
+          complexity: 'small',
+          reopenCount: 0,
+          updatedAt: '2026-05-22T01:00:00.000Z'
+        },
+        agents: [],
+        gates: [],
+        artifacts: [
+          { projectName: 'second', type: 'status', path: 'E:/projects/second/.status.json', hash: null, mtimeMs: 1, summary: 'phase=build' }
+        ]
+      }
+    ])).toThrow();
+
+    expect(store.listProjects()).toEqual([]);
+  });
+
   it('lists indexed project details and run history', () => {
     const store = createStore(db);
 

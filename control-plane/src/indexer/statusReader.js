@@ -70,9 +70,19 @@ function readProjectStatusFiles(projectsDir) {
     };
   }
 
+  let entries;
+  try {
+    entries = fs.readdirSync(projectsDir, { withFileTypes: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'failed to read projects directory';
+    return {
+      projects: [],
+      errors: [{ path: normalizedProjectsDir, message }]
+    };
+  }
+
   const projects = [];
   const errors = [];
-  const entries = fs.readdirSync(projectsDir, { withFileTypes: true });
 
   entries.filter(entry => entry.isDirectory()).forEach(entry => {
     const projectRoot = path.join(projectsDir, entry.name);

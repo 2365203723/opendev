@@ -122,4 +122,16 @@ describe('readProjectStatusFiles', () => {
       }
     ]);
   });
+
+  it('returns an error instead of throwing when projects path is a file', () => {
+    const projectsPath = path.join(tmpDir, 'projects-file');
+    fs.writeFileSync(projectsPath, 'not a directory');
+
+    const result = readProjectStatusFiles(projectsPath);
+
+    expect(result.projects).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].path).toBe(projectsPath.replace(/\\/g, '/'));
+    expect(result.errors[0].message).toContain('ENOTDIR');
+  });
 });

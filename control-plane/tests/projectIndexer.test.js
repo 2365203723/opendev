@@ -1,11 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const request = require('supertest');
-const { createApp } = require('../src/app');
-const { createConfig } = require('../src/config');
 const { createProjectIndexer } = require('../src/indexer/projectIndexer');
-const { createClaudeRunner } = require('../src/runner/claudeRunner');
 
 let tmpDir;
 
@@ -61,28 +57,26 @@ describe('createProjectIndexer', () => {
     expect(saved).toEqual([]);
   });
 
-  it('keeps existing app and runner behavior covered in the focused run', async () => {
-    const app = createApp({
-      store: null,
-      indexer: null,
-      runner: null,
-      config: { version: '0.1.0' }
+  it('does not leave partial indexes when a later project write fails', () => {
+    fs.mkdirSync(path.join(tmpDir, 'first'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'first', '.status.json'), JSON.stringify({ project: 'first', phase: 'build' }));
+    fs.mkdirSync(path.join(tmpDir, 'second'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'second', '.status.json'), JSON.stringify({ project: 'second', phase: 'build' }));
+
+    const written = [];
+    const indexer = createProjectIndexer({
+      config: { projectsDir: tmpDir },
+      store: {
+        replaceProjectIndexes: projectIndexes => {
+          written.push(projectIndexes);
+          throw new Error('db write failed');
+        },
+        replaceProjectIndex: payload => written.push(payload)
+      }
     });
 
-    const healthResponse = await request(app).get('/api/health');
-    const missingResponse = await request(app).get('/missing');
-
-    expect(healthResponse.status).toBe(200);
-    expect(healthResponse.body).toEqual({
-      ok: true,
-      service: 'one-person-dev-company-control-plane',
-      version: '0.1.0'
-    });
-    expect(missingResponse.status).toBe(404);
-    expect(missingResponse.body).toEqual({ error: 'not found: GET /missing' });
-    expect(createConfig({ CONTROL_PLANE_PORT: '3200' }).port).toBe(3200);
-    expect(() => createConfig({ CONTROL_PLANE_HOST: '0.0.0.0' })).toThrow('CONTROL_PLANE_HOST must be 127.0.0.1 or localhost');
-    expect(() => createConfig({ CONTROL_PLANE_PORT: 'abc' })).toThrow('CONTROL_PLANE_PORT must be an integer between 1 and 65535');
-    expect(createClaudeRunner()).toBeNull();
+    expect(() => indexer.rebuild()).toThrow('db write failed');
+    expect(written).toHaveLength(1);
+    expect(written[0]).toHaveLength(2);
   });
 });
