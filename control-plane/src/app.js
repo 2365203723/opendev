@@ -31,9 +31,8 @@ function createApp(dependencies) {
     res.status(404).json({ error: `not found: ${req.method} ${req.path}` });
   });
 
-  app.use((err, _req, res, _next) => {
-    const message = err instanceof Error ? err.message : 'unexpected error';
-    res.status(500).json({ error: message });
+  app.use((_err, _req, res, _next) => {
+    res.status(500).json({ error: 'internal server error' });
   });
 
   return app;

@@ -3,7 +3,8 @@ module.exports = {
     environment: 'node',
     globals: true,
     coverage: {
-      include: ['src/app.js'],
+      include: ['src/**/*.js'],
+      exclude: ['src/server.js'],
       reporter: ['text', 'json-summary'],
       thresholds: {
         lines: 80,
