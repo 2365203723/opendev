@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>One Person Dev Company OS</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="layout">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Local Control Plane</p>
+        <h1>一人开发公司 OS</h1>
+        <p class="subtitle">文件系统是真相源，SQLite 是可重建索引，Claude Code 是执行引擎。</p>
+      </div>
+      <div class="actions">
+        <button id="rebuild-index" class="button primary">重建索引</button>
+        <button id="refresh-dashboard" class="button">刷新</button>
+      </div>
+    </header>
+
+    <section class="stats-grid" aria-label="系统指标">
+      <article class="stat-card"><span id="total-projects">-</span><small>项目</small></article>
+      <article class="stat-card"><span id="active-agents">-</span><small>运行中 Agent</small></article>
+      <article class="stat-card"><span id="blocked-projects">-</span><small>阻塞项目</small></article>
+      <article class="stat-card"><span id="lessons-count">-</span><small>经验条目</small></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>项目</h2>
+        <p id="status-message">等待加载</p>
+      </div>
+      <div id="projects-list" class="project-list"></div>
+    </section>
+
+    <section class="two-column">
+      <article class="panel">
+        <h2>阻塞与 Gate</h2>
+        <div id="blockers-list" class="stack"></div>
+      </article>
+      <article class="panel">
+        <h2>启动 Runner</h2>
+        <form id="runner-form" class="runner-form">
+          <label>命令
+            <select id="command-type">
+              <option value="intake">/intake</option>
+              <option value="go">/go</option>
+              <option value="recover">/recover</option>
+            </select>
+          </label>
+          <label>目标名
+            <input id="target-name" type="text" pattern="[一-龥A-Za-z0-9_-]+" required>
+          </label>
+          <button class="button primary" type="submit">启动</button>
+        </form>
+        <div id="runs-list" class="stack"></div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>最近日志</h2>
+      <div id="logs-list" class="log-list"></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
