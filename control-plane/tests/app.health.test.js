@@ -40,11 +40,12 @@ describe('health API', () => {
   });
 
   it('covers task one placeholder modules', () => {
-    expect(createConfig({})).toEqual({
+    const defaultConfig = createConfig({});
+
+    expect(defaultConfig).toMatchObject({
       version: '0.1.0',
       host: '127.0.0.1',
       port: 3100,
-      databasePath: 'data/control-plane.db',
       projectsDir: 'E:/projects',
       qaReportsDir: 'G:/qa-reports',
       logsDir: 'G:/logs/agents',
@@ -52,9 +53,11 @@ describe('health API', () => {
       claudeAssetsDir: 'H:/claude-assets',
       claudeCommand: 'claude'
     });
+    expect(defaultConfig.databasePath.endsWith('control-plane/data/control-plane.db')).toBe(true);
+    expect(() => createConfig({ CONTROL_PLANE_HOST: '0.0.0.0' })).toThrow('CONTROL_PLANE_HOST must be 127.0.0.1 or localhost');
 
     const config = createConfig({
-      CONTROL_PLANE_HOST: '0.0.0.0',
+      CONTROL_PLANE_HOST: '127.0.0.1',
       CONTROL_PLANE_PORT: '3200',
       CONTROL_PLANE_DB: 'custom.db',
       PROJECTS_DIR: 'P:/projects',
@@ -67,7 +70,7 @@ describe('health API', () => {
 
     expect(config).toEqual({
       version: '0.1.0',
-      host: '0.0.0.0',
+      host: '127.0.0.1',
       port: 3200,
       databasePath: 'custom.db',
       projectsDir: 'P:/projects',
