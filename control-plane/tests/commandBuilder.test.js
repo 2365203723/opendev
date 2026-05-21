@@ -29,5 +29,12 @@ describe('buildClaudeCommand', () => {
   it('rejects unsafe target names', () => {
     expect(() => buildClaudeCommand({ claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', commandType: 'go', targetName: '../demo' }))
       .toThrow('targetName must contain only letters, numbers, underscore, dash, and CJK characters');
+    expect(() => buildClaudeCommand({ claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', commandType: 'go', targetName: 'demo;rm -rf /' }))
+      .toThrow('targetName must contain only letters, numbers, underscore, dash, and CJK characters');
+  });
+
+  it.each([undefined, null])('rejects non-string target names: %s', targetName => {
+    expect(() => buildClaudeCommand({ claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', commandType: 'go', targetName }))
+      .toThrow('targetName must contain only letters, numbers, underscore, dash, and CJK characters');
   });
 });

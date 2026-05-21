@@ -9,7 +9,7 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
   if (!COMMANDS.has(commandType)) {
     throw new Error('commandType must be intake, go, or recover');
   }
-  if (!SAFE_TARGET.test(targetName)) {
+  if (typeof targetName !== 'string' || !SAFE_TARGET.test(targetName)) {
     throw new Error('targetName must contain only letters, numbers, underscore, dash, and CJK characters');
   }
 

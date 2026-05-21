@@ -76,4 +76,30 @@ describe('createClaudeRunner', () => {
     expect(run.status).toBe('failed');
     expect(finishedRuns[0]).toMatchObject({ status: 'failed', exitCode: 1, errorMessage: 'permission denied' });
   });
+
+  it('marks spawn errors failed once and writes the error to logs', async () => {
+    const finishedRuns = [];
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    process.nextTick(() => {
+      child.emit('error', new Error('spawn claude ENOENT'));
+      child.emit('close', 1);
+    });
+
+    const runner = createClaudeRunner({
+      config: { claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', logsDir: tmpDir },
+      store: { createRun: () => {}, finishRun: run => finishedRuns.push(run) },
+      spawnFn: () => child,
+      idFn: () => 'run-3',
+      nowFn: () => '2026-05-22T04:00:00.000Z'
+    });
+
+    const run = await runner.start({ commandType: 'go', targetName: 'demo' });
+
+    expect(run).toMatchObject({ status: 'failed', exitCode: null, errorMessage: 'spawn claude ENOENT' });
+    expect(finishedRuns).toHaveLength(1);
+    expect(finishedRuns[0]).toMatchObject({ id: 'run-3', status: 'failed', exitCode: null, errorMessage: 'spawn claude ENOENT' });
+    expect(fs.readFileSync(path.join(tmpDir, 'run-3.log'), 'utf8')).toContain('spawn claude ENOENT');
+  });
 });

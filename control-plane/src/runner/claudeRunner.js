@@ -33,39 +33,54 @@ function createClaudeRunner(options = {}) {
       });
 
       const child = spawnFn(command.file, command.args, { cwd: config.claudeAssetsDir, shell: false });
-      const chunks = [];
       const errors = [];
+      let isFinished = false;
+
+      const finish = finishedRun => {
+        if (isFinished) {
+          return;
+        }
+        isFinished = true;
+        store.finishRun(finishedRun);
+        resolve({
+          id,
+          commandType: payload.commandType,
+          targetName: payload.targetName,
+          status: finishedRun.status,
+          logPath,
+          exitCode: finishedRun.exitCode,
+          errorMessage: finishedRun.errorMessage,
+          startedAt,
+          finishedAt: finishedRun.finishedAt
+        });
+      };
 
       child.stdout.on('data', data => {
-        chunks.push(data);
         fs.appendFileSync(logPath, data);
       });
       child.stderr.on('data', data => {
         errors.push(data);
         fs.appendFileSync(logPath, data);
       });
+      child.on('error', error => {
+        fs.appendFileSync(logPath, `${error.message}\n`);
+        finish({
+          id,
+          status: 'failed',
+          exitCode: null,
+          errorMessage: error.message,
+          finishedAt: nowFn()
+        });
+      });
       child.on('close', exitCode => {
         const stderr = Buffer.concat(errors).toString('utf8').trim();
         const status = exitCode === 0 ? 'completed' : 'failed';
-        const finishedAt = nowFn();
-        const finishedRun = {
+        finish({
           id,
           status,
           exitCode,
           errorMessage: stderr || null,
-          finishedAt
-        };
-        store.finishRun(finishedRun);
-        resolve({
-          id,
-          commandType: payload.commandType,
-          targetName: payload.targetName,
-          status,
-          logPath,
-          exitCode,
-          errorMessage: stderr || null,
-          startedAt,
-          finishedAt
+          finishedAt: nowFn()
         });
       });
     })
