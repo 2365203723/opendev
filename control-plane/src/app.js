@@ -4,6 +4,138 @@ const path = require('path');
 const { readRecentLogs } = require('./indexer/logReader');
 const { countLessonFiles } = require('./indexer/lessonReader');
 
+// ─── memory helpers ───────────────────────────────────────────────────────────
+
+function writeEvent(store, { eventType, scopeType, scopeId, payload, source, occurredAt }) {
+  if (!store || typeof store.createRawEvent !== 'function') return null;
+  const id = crypto.randomUUID();
+  try {
+    store.createRawEvent({
+      id,
+      eventType,
+      scopeType,
+      scopeId,
+      payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
+      source,
+      occurredAt: occurredAt || new Date().toISOString()
+    });
+  } catch { return null; }
+  return id;
+}
+
+async function triggerCompress(scopeType, scopeId, store, runner, config) {
+  if (!runner) return;
+  const runs = store.listRuns();
+  const running = runs.find(r =>
+    r.commandType === 'memory' &&
+    r.status === 'running' &&
+    r.targetName === `${scopeType}/${scopeId}` &&
+    (Date.now() - new Date(r.startedAt).getTime()) < 10 * 60 * 1000
+  );
+  if (running) return;
+  const events = store.listRawEvents({ scopeType, scopeId, limit: 50, offset: 0 });
+  const episodes = store.listEpisodes({ scopeType, scopeId, limit: 20, offset: 0 });
+  const outputPath = `${config.claudeAssetsDir}/memory-compress-${scopeType}-${scopeId}-${Date.now()}.json`;
+  try {
+    await runner.start({
+      commandType: 'memory',
+      memoryPhase: 'compress',
+      scopeType,
+      scopeId,
+      eventsJson: JSON.stringify(events),
+      episodesJson: JSON.stringify(episodes),
+      outputPath,
+      targetName: `${scopeType}/${scopeId}`,
+      onComplete: (result) => handleCompressComplete(result, scopeType, scopeId, outputPath, store, runner, config)
+    });
+  } catch { /* 静默失败 */ }
+}
+
+function handleCompressComplete(result, scopeType, scopeId, outputPath, store, runner, config) {
+  if (result.status !== 'completed') return;
+  let parsed;
+  try {
+    const fs = require('fs');
+    parsed = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  } catch { return; }
+  const now = new Date().toISOString();
+  (parsed.episodes || []).forEach(ep => {
+    store.createEpisode({
+      id: crypto.randomUUID(),
+      scopeType,
+      scopeId,
+      title: ep.title || '',
+      summary: ep.summary || '',
+      eventIds: JSON.stringify(ep.eventIds || []),
+      artifactPaths: JSON.stringify(ep.artifactPaths || []),
+      conclusion: ep.conclusion || '',
+      generatedByRunId: result.id,
+      validFrom: ep.validFrom || now
+    });
+  });
+  (parsed.facts || []).forEach(fact => {
+    store.createFact({
+      id: crypto.randomUUID(),
+      factType: fact.factType || 'delivery_fact',
+      scopeType,
+      scopeId,
+      content: fact.content || '',
+      sourceEventIds: JSON.stringify(fact.sourceEventIds || []),
+      sourcePaths: JSON.stringify(fact.sourcePaths || []),
+      confidence: fact.confidence ?? 1.0,
+      validFrom: fact.validFrom || now,
+      expiresAt: fact.expiresAt || null,
+      supersedesId: fact.supersedesId || null,
+      status: 'active',
+      generatedByRunId: result.id
+    });
+  });
+  setImmediate(() => triggerPack(scopeType, scopeId, null, store, runner, config));
+}
+
+async function triggerPack(scopeType, scopeId, taskGoal, store, runner, config) {
+  if (!runner) return;
+  const episodes = store.listEpisodes({ scopeType, scopeId, limit: 10, offset: 0 });
+  const facts = store.listFacts({ scopeType, scopeId, status: 'active', limit: 50, offset: 0 });
+  const outputPath = `${config.claudeAssetsDir}/memory-pack-${scopeType}-${scopeId}-${Date.now()}.json`;
+  try {
+    await runner.start({
+      commandType: 'memory',
+      memoryPhase: 'pack',
+      scopeType,
+      scopeId,
+      taskGoal: taskGoal || `scope: ${scopeType}/${scopeId} 的最新上下文`,
+      episodesJson: JSON.stringify(episodes),
+      factsJson: JSON.stringify(facts),
+      outputPath,
+      targetName: `${scopeType}/${scopeId}`,
+      onComplete: (result) => handlePackComplete(result, scopeType, scopeId, outputPath, store)
+    });
+  } catch { /* 静默失败 */ }
+}
+
+function handlePackComplete(result, scopeType, scopeId, outputPath, store) {
+  if (result.status !== 'completed') return;
+  let parsed;
+  try {
+    const fs = require('fs');
+    parsed = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  } catch { return; }
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  store.upsertRetrievalPack({
+    id: crypto.randomUUID(),
+    scopeType,
+    scopeId,
+    runId: result.id,
+    content: JSON.stringify(parsed),
+    episodeIds: JSON.stringify(parsed.episodeIds || []),
+    factIds: JSON.stringify(parsed.factIds || []),
+    generatedAt: now,
+    expiresAt
+  });
+}
+
 function collectDashboard(store, config) {
   const projects = store.listProjects();
   const projectDetails = projects.map(project => ({
@@ -87,7 +219,17 @@ function createApp(dependencies) {
 
   app.post('/api/index/rebuild', (_req, res, next) => {
     try {
-      res.json(indexer.rebuild());
+      const result = indexer.rebuild();
+      if (store) {
+        writeEvent(store, {
+          eventType: 'command_run',
+          scopeType: 'company',
+          scopeId: 'default',
+          payload: { action: 'index_rebuild', indexedProjects: result.indexedProjects },
+          source: 'control_plane'
+        });
+      }
+      res.json(result);
     } catch (error) {
       next(error);
     }
@@ -147,6 +289,15 @@ function createApp(dependencies) {
         return;
       }
       const run = await runner.start(validation.payload);
+      if (store) {
+        writeEvent(store, {
+          eventType: 'command_run',
+          scopeType: 'company',
+          scopeId: 'default',
+          payload: { runId: run.id, commandType: validation.payload.commandType, targetName: validation.payload.targetName, status: run.status, exitCode: run.exitCode },
+          source: 'control_plane'
+        });
+      }
       res.status(202).json(run);
     } catch (error) {
       next(error);
@@ -293,9 +444,18 @@ function createApp(dependencies) {
         res.status(400).json({ error: 'cannot cancel a released change request' });
         return;
       }
+      const fromStatus = cr.status;
+      const crId = req.params.id;
       const now = new Date().toISOString();
-      store.updateCrStatus(req.params.id, { status: 'cancelled', updatedAt: now });
-      const updated = store.getCr(req.params.id);
+      store.updateCrStatus(crId, { status: 'cancelled', updatedAt: now });
+      writeEvent(store, {
+        eventType: 'agent_run',
+        scopeType: 'cr',
+        scopeId: crId,
+        payload: { crId, fromStatus, toStatus: 'cancelled' },
+        source: 'control_plane'
+      });
+      const updated = store.getCr(crId);
       res.json(updated);
     } catch (error) {
       next(error);
@@ -439,6 +599,101 @@ function createApp(dependencies) {
         }
       });
       res.status(202).json({ crId, status: 'regression_running' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ─── memory events API ────────────────────────────────────────────────────────
+
+  const ALLOWED_MANUAL_EVENT_TYPES = new Set(['user_message', 'decision']);
+  const INTERNAL_EVENT_TYPES = new Set(['command_run', 'agent_run']);
+
+  app.post('/api/memory/events', (req, res, next) => {
+    try {
+      const { eventType, scopeType, scopeId, payload, occurredAt } = req.body || {};
+
+      if (!eventType) {
+        res.status(400).json({ error: 'eventType is required' });
+        return;
+      }
+      if (INTERNAL_EVENT_TYPES.has(eventType)) {
+        res.status(400).json({ error: `eventType '${eventType}' cannot be written manually` });
+        return;
+      }
+      if (!ALLOWED_MANUAL_EVENT_TYPES.has(eventType)) {
+        res.status(400).json({ error: `eventType must be one of: ${[...ALLOWED_MANUAL_EVENT_TYPES].join(', ')}` });
+        return;
+      }
+      if (!scopeType) {
+        res.status(400).json({ error: 'scopeType is required' });
+        return;
+      }
+      if (!scopeId) {
+        res.status(400).json({ error: 'scopeId is required' });
+        return;
+      }
+      if (payload === undefined || payload === null) {
+        res.status(400).json({ error: 'payload is required' });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+      const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      const resolvedOccurredAt = occurredAt || now;
+
+      store.createRawEvent({
+        id,
+        eventType,
+        scopeType,
+        scopeId,
+        payload: payloadStr,
+        source: 'user',
+        occurredAt: resolvedOccurredAt
+      });
+
+      const event = store.getRawEvent(id);
+
+      setImmediate(() => triggerCompress(scopeType, scopeId, store, runner, config));
+
+      res.status(201).json(event);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/memory/events', (req, res, next) => {
+    try {
+      const { scopeType, scopeId, eventType } = req.query;
+      const limit = req.query.limit !== undefined ? parseInt(req.query.limit, 10) : 50;
+      const offset = req.query.offset !== undefined ? parseInt(req.query.offset, 10) : 0;
+
+      const filter = {};
+      if (scopeType) filter.scopeType = scopeType;
+      if (scopeId) filter.scopeId = scopeId;
+      if (eventType) filter.eventType = eventType;
+
+      // 获取总数（不分页）
+      const allEvents = store.listRawEvents({ ...filter, limit: 100000, offset: 0 });
+      const total = allEvents.length;
+
+      const events = store.listRawEvents({ ...filter, limit, offset });
+
+      res.json({ events, total });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/memory/events/:id', (req, res, next) => {
+    try {
+      const event = store.getRawEvent(req.params.id);
+      if (!event) {
+        res.status(404).json({ error: 'event not found' });
+        return;
+      }
+      res.json(event);
     } catch (error) {
       next(error);
     }
