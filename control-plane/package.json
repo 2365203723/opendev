@@ -1,0 +1,30 @@
+{
+  "name": "one-person-dev-company-control-plane",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local control plane and Web Console for the web-outsource pipeline",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "smoke": "node -e \"const host=process.env.CONTROL_PLANE_HOST||'127.0.0.1';const port=process.env.CONTROL_PLANE_PORT||3100;fetch('http://'+host+':'+port+'/api/health').then(r=>r.json()).then(j=>{if(!j.ok)process.exit(1);console.log(JSON.stringify(j))}).catch(()=>process.exit(1))\"",
+    "audit:prod": "npm audit --omit=dev"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
