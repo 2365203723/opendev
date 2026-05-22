@@ -55,6 +55,39 @@ function createStore(db) {
     WHERE id = @id
   `);
 
+  const insertCr = db.prepare(`
+    INSERT INTO change_requests
+      (id, project_name, title, source, scope, current_behavior, expected_behavior,
+       acceptance_criteria, priority, status, ia_run_id, patch_run_id, regression_run_id,
+       created_at, updated_at)
+    VALUES
+      (@id, @projectName, @title, @source, @scope, @currentBehavior, @expectedBehavior,
+       @acceptanceCriteria, @priority, @status, @iaRunId, @patchRunId, @regressionRunId,
+       @createdAt, @updatedAt)
+  `);
+
+  const updateCrStatusStmt = db.prepare(`
+    UPDATE change_requests
+    SET status = @status,
+        ia_run_id = COALESCE(@iaRunId, ia_run_id),
+        patch_run_id = COALESCE(@patchRunId, patch_run_id),
+        regression_run_id = COALESCE(@regressionRunId, regression_run_id),
+        updated_at = @updatedAt
+    WHERE id = @id
+  `);
+
+  const upsertCrDocumentStmt = db.prepare(`
+    INSERT OR REPLACE INTO cr_documents (cr_id, doc_type, path, content_summary)
+    VALUES (@crId, @docType, @path, @contentSummary)
+  `);
+
+  const insertRegressionResult = db.prepare(`
+    INSERT INTO regression_results
+      (cr_id, run_id, status, total_tests, passed_tests, failed_tests, report_path, created_at)
+    VALUES
+      (@crId, @runId, @status, @totalTests, @passedTests, @failedTests, @reportPath, @createdAt)
+  `);
+
   return {
     replaceProjectIndex: payload => replaceProjectIndexTxn(payload),
     replaceProjectIndexes: projectIndexes => replaceProjectIndexesTxn(projectIndexes),
@@ -94,7 +127,60 @@ function createStore(db) {
       FROM runs
       ORDER BY started_at DESC
       LIMIT 50
-    `).all()
+    `).all(),
+    createCr: cr => insertCr.run(cr),
+    getCr: id => db.prepare(`
+      SELECT id, project_name AS projectName, title, source, scope,
+             current_behavior AS currentBehavior, expected_behavior AS expectedBehavior,
+             acceptance_criteria AS acceptanceCriteria, priority, status,
+             ia_run_id AS iaRunId, patch_run_id AS patchRunId, regression_run_id AS regressionRunId,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM change_requests
+      WHERE id = ?
+    `).get(id) || null,
+    updateCrStatus: (id, { status, iaRunId = null, patchRunId = null, regressionRunId = null, updatedAt }) =>
+      updateCrStatusStmt.run({ id, status, iaRunId, patchRunId, regressionRunId, updatedAt }),
+    listCrs: (projectName) => {
+      if (projectName !== undefined) {
+        return db.prepare(`
+          SELECT id, project_name AS projectName, title, source, scope,
+                 current_behavior AS currentBehavior, expected_behavior AS expectedBehavior,
+                 acceptance_criteria AS acceptanceCriteria, priority, status,
+                 ia_run_id AS iaRunId, patch_run_id AS patchRunId, regression_run_id AS regressionRunId,
+                 created_at AS createdAt, updated_at AS updatedAt
+          FROM change_requests
+          WHERE project_name = ?
+          ORDER BY created_at DESC
+        `).all(projectName);
+      }
+      return db.prepare(`
+        SELECT id, project_name AS projectName, title, source, scope,
+               current_behavior AS currentBehavior, expected_behavior AS expectedBehavior,
+               acceptance_criteria AS acceptanceCriteria, priority, status,
+               ia_run_id AS iaRunId, patch_run_id AS patchRunId, regression_run_id AS regressionRunId,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM change_requests
+        ORDER BY created_at DESC
+      `).all();
+    },
+    upsertCrDocument: (crId, docType, path, contentSummary) =>
+      upsertCrDocumentStmt.run({ crId, docType, path, contentSummary }),
+    getCrDocument: (crId, docType) => db.prepare(`
+      SELECT cr_id AS crId, doc_type AS docType, path, content_summary AS contentSummary,
+             created_at AS createdAt
+      FROM cr_documents
+      WHERE cr_id = ? AND doc_type = ?
+    `).get(crId, docType) || null,
+    createRegressionResult: result => insertRegressionResult.run(result),
+    getLatestRegressionResult: crId => db.prepare(`
+      SELECT id, cr_id AS crId, run_id AS runId, status,
+             total_tests AS totalTests, passed_tests AS passedTests, failed_tests AS failedTests,
+             report_path AS reportPath, created_at AS createdAt
+      FROM regression_results
+      WHERE cr_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(crId) || null
   };
 }
 
