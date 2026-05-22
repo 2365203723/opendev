@@ -16,10 +16,26 @@ function createAppWithRuntime(env) {
 }
 
 function startServer() {
-  const { app, config } = createAppWithRuntime(process.env);
-  app.listen(config.port, config.host, () => {
-    process.stdout.write(`Control Plane running at http://${config.host}:${config.port}\n`);
+  const { app, config, db } = createAppWithRuntime(process.env);
+  const closeDb = () => {
+    if (db.open) db.close();
+  };
+  let server;
+
+  try {
+    server = app.listen(config.port, config.host, () => {
+      process.stdout.write(`Control Plane running at http://${config.host}:${config.port}\n`);
+    });
+  } catch (error) {
+    closeDb();
+    throw error;
+  }
+
+  server.on('error', error => {
+    closeDb();
+    if (server.listenerCount('error') === 1) throw error;
   });
+  return { server, db, config };
 }
 
 if (require.main === module) {
