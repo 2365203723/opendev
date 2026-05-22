@@ -9,6 +9,8 @@ describe('public Web Console files', () => {
 
     expect(html).toContain('<main class="layout">');
     expect(html).toContain('id="rebuild-index"');
+    expect(html).toContain('rel="icon"');
+    expect(html).toContain('href="data:,"');
     expect(js).toContain('fetchJson');
     expect(js).not.toContain('scrollIntoView');
     expect(css).toContain('--color-primary: #1d9bf0');
