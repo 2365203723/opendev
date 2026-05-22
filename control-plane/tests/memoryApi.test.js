@@ -684,3 +684,220 @@ describe('Memory compress/pack pipeline coverage', () => {
     expect(pack).toBeNull();
   });
 });
+
+// ─── Episodes 只读 API ────────────────────────────────────────────────────────
+
+describe('GET /api/memory/episodes', () => {
+  let app;
+  let store;
+
+  beforeEach(() => {
+    const db = createDb();
+    store = createStore(db);
+    app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: null
+    });
+  });
+
+  it('列出 episodes，返回 { episodes, total }', async () => {
+    const now = new Date().toISOString();
+    store.createEpisode({ id: 'ep-1', scopeType: 'project', scopeId: 'demo', title: 'Ep 1', summary: 's1', eventIds: '[]', artifactPaths: '[]', conclusion: '', generatedByRunId: null, validFrom: now });
+    store.createEpisode({ id: 'ep-2', scopeType: 'project', scopeId: 'demo', title: 'Ep 2', summary: 's2', eventIds: '[]', artifactPaths: '[]', conclusion: '', generatedByRunId: null, validFrom: now });
+
+    const res = await request(app).get('/api/memory/episodes?scopeType=project&scopeId=demo');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.episodes).toHaveLength(2);
+  });
+
+  it('GET /api/memory/episodes/:id 存在 → 200', async () => {
+    const now = new Date().toISOString();
+    store.createEpisode({ id: 'ep-get', scopeType: 'project', scopeId: 'demo', title: 'T', summary: 's', eventIds: '[]', artifactPaths: '[]', conclusion: '', generatedByRunId: null, validFrom: now });
+
+    const res = await request(app).get('/api/memory/episodes/ep-get');
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('ep-get');
+  });
+
+  it('GET /api/memory/episodes/:id 不存在 → 404', async () => {
+    const res = await request(app).get('/api/memory/episodes/no-such-ep');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── Facts 只读 API + reject ──────────────────────────────────────────────────
+
+describe('GET /api/memory/facts', () => {
+  let app;
+  let store;
+
+  beforeEach(() => {
+    const db = createDb();
+    store = createStore(db);
+    app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: null
+    });
+  });
+
+  it('列出 facts，返回 { facts, total }', async () => {
+    const now = new Date().toISOString();
+    store.createFact({ id: 'f-1', factType: 'delivery_fact', scopeType: 'project', scopeId: 'demo', content: 'c1', sourceEventIds: '[]', sourcePaths: '[]', status: 'active', confidence: 1.0, validFrom: now, expiresAt: null, supersedesId: null, generatedByRunId: null });
+    store.createFact({ id: 'f-2', factType: 'delivery_fact', scopeType: 'project', scopeId: 'demo', content: 'c2', sourceEventIds: '[]', sourcePaths: '[]', status: 'active', confidence: 1.0, validFrom: now, expiresAt: null, supersedesId: null, generatedByRunId: null });
+
+    const res = await request(app).get('/api/memory/facts?scopeType=project&scopeId=demo');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.facts).toHaveLength(2);
+  });
+
+  it('GET /api/memory/facts?status=active → 只返回 active', async () => {
+    const now = new Date().toISOString();
+    store.createFact({ id: 'f-active', factType: 'delivery_fact', scopeType: 'project', scopeId: 'demo', content: 'active', sourceEventIds: '[]', sourcePaths: '[]', status: 'active', confidence: 1.0, validFrom: now, expiresAt: null, supersedesId: null, generatedByRunId: null });
+    store.createFact({ id: 'f-rejected', factType: 'delivery_fact', scopeType: 'project', scopeId: 'demo', content: 'rejected', sourceEventIds: '[]', sourcePaths: '[]', status: 'rejected', confidence: 1.0, validFrom: now, expiresAt: null, supersedesId: null, generatedByRunId: null });
+
+    const res = await request(app).get('/api/memory/facts?status=active');
+    expect(res.status).toBe(200);
+    expect(res.body.facts.every(f => f.status === 'active')).toBe(true);
+  });
+
+  it('GET /api/memory/facts/:id 存在 → 200', async () => {
+    const now = new Date().toISOString();
+    store.createFact({ id: 'f-get', factType: 'delivery_fact', scopeType: 'project', scopeId: 'demo', content: 'c', sourceEventIds: '[]', sourcePaths: '[]', status: 'active', confidence: 1.0, validFrom: now, expiresAt: null, supersedesId: null, generatedByRunId: null });
+
+    const res = await request(app).get('/api/memory/facts/f-get');
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('f-get');
+  });
+
+  it('GET /api/memory/facts/:id 不存在 → 404', async () => {
+    const res = await request(app).get('/api/memory/facts/no-such-fact');
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /api/memory/facts/:id/reject → 200，status 变为 rejected', async () => {
+    const now = new Date().toISOString();
+    store.createFact({ id: 'f-rej', factType: 'delivery_fact', scopeType: 'project', scopeId: 'demo', content: 'c', sourceEventIds: '[]', sourcePaths: '[]', status: 'active', confidence: 1.0, validFrom: now, expiresAt: null, supersedesId: null, generatedByRunId: null });
+
+    const res = await request(app).patch('/api/memory/facts/f-rej/reject');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('rejected');
+  });
+
+  it('PATCH /api/memory/facts/:id/reject 不存在 → 404', async () => {
+    const res = await request(app).patch('/api/memory/facts/no-such/reject');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── Retrieval Packs 只读 API ─────────────────────────────────────────────────
+
+describe('GET /api/memory/packs', () => {
+  let app;
+  let store;
+
+  beforeEach(() => {
+    const db = createDb();
+    store = createStore(db);
+    app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: null
+    });
+  });
+
+  it('GET /api/memory/packs/latest 有未过期 pack → 200', async () => {
+    const future = new Date(Date.now() + 86400000).toISOString();
+    const now = new Date().toISOString();
+    store.upsertRetrievalPack({ id: 'pack-1', scopeType: 'company', scopeId: 'default', runId: null, content: '{}', episodeIds: '[]', factIds: '[]', generatedAt: now, expiresAt: future });
+
+    const res = await request(app).get('/api/memory/packs/latest?scopeType=company&scopeId=default');
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('pack-1');
+  });
+
+  it('GET /api/memory/packs/latest 无 pack → 404', async () => {
+    const res = await request(app).get('/api/memory/packs/latest?scopeType=company&scopeId=default');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /api/memory/packs → 200，{ packs: [...] }', async () => {
+    const future = new Date(Date.now() + 86400000).toISOString();
+    const now = new Date().toISOString();
+    store.upsertRetrievalPack({ id: 'pack-list', scopeType: 'company', scopeId: 'default', runId: null, content: '{}', episodeIds: '[]', factIds: '[]', generatedAt: now, expiresAt: future });
+
+    const res = await request(app).get('/api/memory/packs?scopeType=company&scopeId=default');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.packs)).toBe(true);
+    expect(res.body.packs.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ─── 手动触发 compress ────────────────────────────────────────────────────────
+
+describe('POST /api/memory/compress', () => {
+  let store;
+
+  beforeEach(() => {
+    const db = createDb();
+    store = createStore(db);
+  });
+
+  it('runner 为 mock → 202，{ message: "compress triggered" }', async () => {
+    const mockRunner = { start: vi.fn().mockResolvedValue({}) };
+    const app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: mockRunner
+    });
+
+    const res = await request(app).post('/api/memory/compress').send({ scopeType: 'project', scopeId: 'demo' });
+    expect(res.status).toBe(202);
+    expect(res.body.message).toBe('compress triggered');
+  });
+
+  it('runner 为 null → 503', async () => {
+    const app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: null
+    });
+
+    const res = await request(app).post('/api/memory/compress').send({ scopeType: 'project', scopeId: 'demo' });
+    expect(res.status).toBe(503);
+  });
+
+  it('缺少 scopeType → 400', async () => {
+    const mockRunner = { start: vi.fn().mockResolvedValue({}) };
+    const app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: mockRunner
+    });
+
+    const res = await request(app).post('/api/memory/compress').send({ scopeId: 'demo' });
+    expect(res.status).toBe(400);
+  });
+
+  it('缺少 scopeId → 400', async () => {
+    const mockRunner = { start: vi.fn().mockResolvedValue({}) };
+    const app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: mockRunner
+    });
+
+    const res = await request(app).post('/api/memory/compress').send({ scopeType: 'project' });
+    expect(res.status).toBe(400);
+  });
+});
