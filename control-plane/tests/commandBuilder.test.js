@@ -158,4 +158,75 @@ describe('buildClaudeCommand', () => {
       commandType: 'recover'
     })).toThrow('targetName must contain only letters, numbers, underscore, dash, and CJK characters');
   });
+
+  // memory compress 阶段
+  it('memory compress 阶段：返回 { file, args, prompt }，prompt 包含关键字段', () => {
+    const result = buildClaudeCommand({
+      claudeCommand: 'claude',
+      claudeAssetsDir: 'H:/claude-assets',
+      commandType: 'memory',
+      memoryPhase: 'compress',
+      scopeType: 'project',
+      scopeId: 'demo',
+      eventsJson: '[{"id":"e1"}]',
+      episodesJson: '[]',
+      outputPath: 'H:/claude-assets/memory-compress-out.json'
+    });
+
+    expect(result).toHaveProperty('file');
+    expect(result).toHaveProperty('args');
+    expect(result).toHaveProperty('prompt');
+    expect(result.prompt).toContain('project');
+    expect(result.prompt).toContain('demo');
+    expect(result.prompt).toContain('compress');
+    expect(result.prompt).toContain('[{"id":"e1"}]');
+    expect(result.prompt).toContain('[]');
+    expect(result.prompt).toContain('H:/claude-assets/memory-compress-out.json');
+    expect(result.args).toContain('-p');
+    expect(result.args).toContain('--output-format');
+  });
+
+  // memory pack 阶段
+  it('memory pack 阶段：prompt 包含 taskGoal、episodesJson、factsJson、outputPath', () => {
+    const result = buildClaudeCommand({
+      claudeCommand: 'claude',
+      claudeAssetsDir: 'H:/claude-assets',
+      commandType: 'memory',
+      memoryPhase: 'pack',
+      scopeType: 'project',
+      scopeId: 'demo',
+      taskGoal: '执行 /go demo',
+      episodesJson: '[{"id":"ep1"}]',
+      factsJson: '[{"id":"f1"}]',
+      outputPath: 'H:/claude-assets/memory-pack-out.json'
+    });
+
+    expect(result.prompt).toContain('执行 /go demo');
+    expect(result.prompt).toContain('[{"id":"ep1"}]');
+    expect(result.prompt).toContain('[{"id":"f1"}]');
+    expect(result.prompt).toContain('H:/claude-assets/memory-pack-out.json');
+  });
+
+  // memory 缺少 memoryPhase → 抛错
+  it('memory 缺少 memoryPhase → 抛错', () => {
+    expect(() => buildClaudeCommand({
+      claudeCommand: 'claude',
+      claudeAssetsDir: 'H:/claude-assets',
+      commandType: 'memory',
+      scopeType: 'project',
+      scopeId: 'demo'
+    })).toThrow('memoryPhase is required for memory command');
+  });
+
+  // memory 未知 memoryPhase → 抛错
+  it('memory 未知 memoryPhase → 抛错', () => {
+    expect(() => buildClaudeCommand({
+      claudeCommand: 'claude',
+      claudeAssetsDir: 'H:/claude-assets',
+      commandType: 'memory',
+      memoryPhase: 'unknown-phase',
+      scopeType: 'project',
+      scopeId: 'demo'
+    })).toThrow('unknown memoryPhase: unknown-phase');
+  });
 });

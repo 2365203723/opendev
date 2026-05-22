@@ -109,6 +109,62 @@ function openDatabase(databasePath) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (cr_id) REFERENCES change_requests(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS raw_events (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      scope_type TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      source TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS episodes (
+      id TEXT PRIMARY KEY,
+      scope_type TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      event_ids TEXT NOT NULL,
+      artifact_paths TEXT NOT NULL,
+      conclusion TEXT NOT NULL,
+      generated_by_run_id TEXT,
+      valid_from TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS facts (
+      id TEXT PRIMARY KEY,
+      fact_type TEXT NOT NULL,
+      scope_type TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source_event_ids TEXT NOT NULL,
+      source_paths TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 1.0,
+      valid_from TEXT NOT NULL,
+      expires_at TEXT,
+      supersedes_id TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      generated_by_run_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (supersedes_id) REFERENCES facts(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS retrieval_packs (
+      id TEXT PRIMARY KEY,
+      scope_type TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      run_id TEXT,
+      content TEXT NOT NULL,
+      episode_ids TEXT NOT NULL,
+      fact_ids TEXT NOT NULL,
+      generated_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   return db;
 }

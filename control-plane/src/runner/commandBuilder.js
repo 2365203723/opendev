@@ -1,4 +1,4 @@
-const COMMANDS = new Set(['intake', 'go', 'recover', 'patch']);
+const COMMANDS = new Set(['intake', 'go', 'recover', 'patch', 'memory']);
 const SAFE_TARGET = /^[\p{L}\p{N}_-]+$/u;
 
 function buildPrompt({ claudeAssetsDir, commandType, targetName }) {
@@ -20,7 +20,90 @@ function buildPatchPrompt({ claudeAssetsDir, crId, patchPhase, projectName, ...r
   }
 }
 
-function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targetName, crId, patchPhase, projectName, ...rest }) {
+function buildMemoryPrompt({ claudeAssetsDir, memoryPhase, scopeType, scopeId, outputPath, ...rest }) {
+  if (!memoryPhase) {
+    throw new Error('memoryPhase is required for memory command');
+  }
+  switch (memoryPhase) {
+    case 'compress':
+      return `[memory/compress] scope: ${scopeType}/${scopeId}，资产目录：${claudeAssetsDir}
+
+你是记忆压缩 Agent。请完成以下任务：
+
+## 输入
+
+最近未处理的 Raw Events（JSON 数组）：
+${rest.eventsJson}
+
+已有 Episodes（JSON 数组，供参考去重）：
+${rest.episodesJson}
+
+## 任务
+
+1. 将 Raw Events 分组为 Episodes（每个 Episode 对应一个有意义的阶段，如"一次 intake 完成"、"一次 CR 从提出到发布"）。
+2. 从 Episodes 中提取 Facts（可复用事实，类型：user_preference / project_constraint / architecture_decision / delivery_fact / risk_fact / lesson_fact）。
+3. 对每条 Fact 标注 confidence（0.0–1.0）、valid_from、expires_at（可为 null）、supersedes_id（若替代旧 Fact）。
+
+## 输出格式
+
+输出严格 JSON，写入以下路径，不输出其他内容：
+OUTPUT_PATH: ${outputPath}
+
+JSON 结构：
+{
+  "episodes": [{ "title": "...", "summary": "...", "eventIds": [...], "artifactPaths": [...], "conclusion": "...", "validFrom": "..." }],
+  "facts": [{ "factType": "...", "content": "...", "sourceEventIds": [...], "sourcePaths": [...], "confidence": 0.9, "validFrom": "...", "expiresAt": null, "supersedesId": null }]
+}`;
+    case 'pack':
+      return `[memory/pack] scope: ${scopeType}/${scopeId}，资产目录：${claudeAssetsDir}
+
+你是 Retrieval Pack 生成 Agent。请为即将启动的 Runner 生成精准上下文包。
+
+## 任务目标
+
+${rest.taskGoal}
+
+## 可用 Episodes（JSON 数组）
+
+${rest.episodesJson}
+
+## 可用 Facts（JSON 数组，仅 active 状态）
+
+${rest.factsJson}
+
+## 任务
+
+从上述 Episodes 和 Facts 中选取与任务目标最相关的内容，生成 Retrieval Pack。
+Pack 内容上限 4000 字符，必须包含：
+1. 当前任务目标摘要。
+2. 当前 scope 的关键状态（来自 delivery_fact / project_constraint）。
+3. 最近相关 Episodes（最多 3 条）。
+4. active Facts（按 confidence 降序，最多 10 条）。
+5. 必须遵守的 governance 摘要（来自 architecture_decision）。
+6. 明确排除的过期或被替代信息。
+
+## 输出格式
+
+输出严格 JSON，写入以下路径，不输出其他内容：
+OUTPUT_PATH: ${outputPath}
+
+JSON 结构：
+{
+  "taskGoal": "...",
+  "keyStatus": "...",
+  "recentEpisodes": [...],
+  "activeFacts": [...],
+  "governanceSummary": "...",
+  "excludedInfo": "...",
+  "episodeIds": [...],
+  "factIds": [...]
+}`;
+    default:
+      throw new Error(`unknown memoryPhase: ${memoryPhase}`);
+  }
+}
+
+function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targetName, crId, patchPhase, projectName, memoryPhase, ...rest }) {
   if (!COMMANDS.has(commandType)) {
     throw new Error('commandType must be intake, go, or recover');
   }
@@ -30,6 +113,15 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
       throw new Error('crId is required for patch command');
     }
     const prompt = buildPatchPrompt({ claudeAssetsDir, crId, patchPhase, projectName, ...rest });
+    return {
+      file: claudeCommand,
+      args: ['-p', prompt, '--output-format', 'json'],
+      prompt
+    };
+  }
+
+  if (commandType === 'memory') {
+    const prompt = buildMemoryPrompt({ claudeAssetsDir, memoryPhase, ...rest });
     return {
       file: claudeCommand,
       args: ['-p', prompt, '--output-format', 'json'],

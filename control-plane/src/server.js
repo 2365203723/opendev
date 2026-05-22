@@ -17,7 +17,8 @@ function createAppWithRuntime(env) {
 
 function startServer() {
   const { app, config, db } = createAppWithRuntime(process.env);
-  const closeDb = () => {
+  const closeAll = () => {
+    if (typeof app.close === 'function') app.close();
     if (db.open) db.close();
   };
   let server;
@@ -27,14 +28,18 @@ function startServer() {
       process.stdout.write(`Control Plane running at http://${config.host}:${config.port}\n`);
     });
   } catch (error) {
-    closeDb();
+    closeAll();
     throw error;
   }
 
   server.on('error', error => {
-    closeDb();
+    closeAll();
     if (server.listenerCount('error') === 1) throw error;
   });
+
+  process.on('SIGTERM', () => { if (typeof app.close === 'function') app.close(); });
+  process.on('SIGINT', () => { if (typeof app.close === 'function') app.close(); });
+
   return { server, db, config };
 }
 

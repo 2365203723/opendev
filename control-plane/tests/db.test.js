@@ -30,9 +30,13 @@ describe('SQLite store', () => {
       'artifacts',
       'change_requests',
       'cr_documents',
+      'episodes',
+      'facts',
       'gates',
       'projects',
+      'raw_events',
       'regression_results',
+      'retrieval_packs',
       'runs',
       'sqlite_sequence'
     ]);

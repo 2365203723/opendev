@@ -118,6 +118,54 @@
 
       <div id="cr-list" class="stack"></div>
     </section>
+
+    <section class="panel" id="memory-section">
+      <div class="panel-heading">
+        <h2>记忆中心</h2>
+        <div class="actions">
+          <button id="memory-compress-btn" class="button">触发压缩</button>
+          <button id="memory-event-toggle" class="button">记录事件</button>
+        </div>
+      </div>
+
+      <form id="memory-event-form" class="cr-form" hidden>
+        <label>事件类型
+          <select id="memory-event-type">
+            <option value="user_message">用户消息</option>
+            <option value="decision">决策</option>
+          </select>
+        </label>
+        <label>范围类型
+          <select id="memory-scope-type">
+            <option value="company">公司</option>
+            <option value="project">项目</option>
+            <option value="cr">变更请求</option>
+          </select>
+        </label>
+        <label>范围 ID
+          <input id="memory-scope-id" type="text" required>
+        </label>
+        <label>内容
+          <textarea id="memory-payload" rows="3" required></textarea>
+        </label>
+        <div class="form-actions">
+          <button class="button primary" type="submit">提交</button>
+          <button id="memory-event-cancel" class="button" type="button">取消</button>
+        </div>
+      </form>
+
+      <div class="memory-tabs">
+        <button class="memory-tab active" data-tab="events">事件</button>
+        <button class="memory-tab" data-tab="episodes">Episodes</button>
+        <button class="memory-tab" data-tab="facts">Facts</button>
+        <button class="memory-tab" data-tab="pack">Retrieval Pack</button>
+      </div>
+
+      <div id="memory-events-panel" class="memory-panel stack"></div>
+      <div id="memory-episodes-panel" class="memory-panel stack" hidden></div>
+      <div id="memory-facts-panel" class="memory-panel stack" hidden></div>
+      <div id="memory-pack-panel" class="memory-panel" hidden></div>
+    </section>
   </main>
   <script src="/app.js"></script>
 </body>
