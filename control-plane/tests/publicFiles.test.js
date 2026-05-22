@@ -16,4 +16,12 @@ describe('public Web Console files', () => {
     expect(css).toContain('--color-primary: #1d9bf0');
     expect(css).toContain('text-wrap: pretty');
   });
+
+  it('includes iteration center section with required ids', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'public', 'index.html'), 'utf8');
+
+    expect(html).toContain('id="cr-section"');
+    expect(html).toContain('id="cr-form"');
+    expect(html).toContain('id="cr-list"');
+  });
 });
