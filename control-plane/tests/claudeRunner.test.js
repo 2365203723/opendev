@@ -102,4 +102,61 @@ describe('createClaudeRunner', () => {
     expect(finishedRuns[0]).toMatchObject({ id: 'run-3', status: 'failed', exitCode: null, errorMessage: 'spawn claude ENOENT' });
     expect(fs.readFileSync(path.join(tmpDir, 'run-3.log'), 'utf8')).toContain('spawn claude ENOENT');
   });
+
+  it('patch payload: run 对象 commandType 为 patch，targetName 为 crId', async () => {
+    const createdRuns = [];
+    const runner = createClaudeRunner({
+      config: { claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', logsDir: tmpDir },
+      store: { createRun: run => createdRuns.push(run), finishRun: () => {} },
+      spawnFn: () => createProcess(0),
+      idFn: () => 'run-patch-1',
+      nowFn: () => '2026-05-22T04:00:00.000Z'
+    });
+
+    const run = await runner.start({
+      commandType: 'patch',
+      crId: 'cr-1',
+      patchPhase: 'ia',
+      agentRole: 'architect',
+      projectName: 'demo',
+      crPath: '/tmp/cr.md',
+      iaOutputPath: '/tmp/ia.md',
+      patchPlanPath: '/tmp/patch.md'
+    });
+
+    expect(run).toMatchObject({ commandType: 'patch', targetName: 'cr-1' });
+    expect(createdRuns[0]).toMatchObject({ commandType: 'patch', targetName: 'cr-1' });
+  });
+
+  it('patch payload 缺少 crId 时 start() reject', async () => {
+    const runner = createClaudeRunner({
+      config: { claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', logsDir: tmpDir },
+      store: { createRun: () => {}, finishRun: () => {} },
+      spawnFn: () => createProcess(0),
+      idFn: () => 'run-patch-err',
+      nowFn: () => '2026-05-22T04:00:00.000Z'
+    });
+
+    await expect(runner.start({ commandType: 'patch' })).rejects.toThrow();
+  });
+
+  it('onComplete 回调在 run 完成后被调用一次，参数含 id/status/exitCode', async () => {
+    const callbackCalls = [];
+    const runner = createClaudeRunner({
+      config: { claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', logsDir: tmpDir },
+      store: { createRun: () => {}, finishRun: () => {} },
+      spawnFn: () => createProcess(0),
+      idFn: () => 'run-cb-1',
+      nowFn: () => '2026-05-22T04:00:00.000Z'
+    });
+
+    await runner.start({
+      commandType: 'go',
+      targetName: 'demo',
+      onComplete: result => callbackCalls.push(result)
+    });
+
+    expect(callbackCalls).toHaveLength(1);
+    expect(callbackCalls[0]).toMatchObject({ id: 'run-cb-1', status: 'completed', exitCode: 0 });
+  });
 });

@@ -11,13 +11,33 @@ function createClaudeRunner(options = {}) {
   }
 
   return {
-    start: payload => new Promise(resolve => {
-      const command = buildClaudeCommand({
-        claudeCommand: config.claudeCommand,
-        claudeAssetsDir: config.claudeAssetsDir,
-        commandType: payload.commandType,
-        targetName: payload.targetName
-      });
+    start: payload => new Promise((resolve, reject) => {
+      if (payload.commandType === 'patch') {
+        if (!payload.crId) {
+          return reject(new Error('patch commandType requires crId'));
+        }
+      }
+
+      let command;
+      let targetName;
+      if (payload.commandType === 'patch') {
+        targetName = payload.crId;
+        const prompt = `在 ${config.claudeAssetsDir} 中执行 /patch ${payload.crId}。phase=${payload.patchPhase} role=${payload.agentRole} project=${payload.projectName}。遵守项目 CLAUDE.md、governance 规则和 Codex 双审要求。`;
+        command = {
+          file: config.claudeCommand,
+          args: ['-p', prompt, '--output-format', 'json'],
+          prompt
+        };
+      } else {
+        targetName = payload.targetName;
+        command = buildClaudeCommand({
+          claudeCommand: config.claudeCommand,
+          claudeAssetsDir: config.claudeAssetsDir,
+          commandType: payload.commandType,
+          targetName
+        });
+      }
+
       const id = idFn();
       const startedAt = nowFn();
       const logPath = path.join(config.logsDir, `${id}.log`).replace(/\\/g, '/');
@@ -25,7 +45,7 @@ function createClaudeRunner(options = {}) {
       store.createRun({
         id,
         commandType: payload.commandType,
-        targetName: payload.targetName,
+        targetName,
         status: 'running',
         prompt: command.prompt,
         logPath,
@@ -42,17 +62,21 @@ function createClaudeRunner(options = {}) {
         }
         isFinished = true;
         store.finishRun(finishedRun);
-        resolve({
+        const runResult = {
           id,
           commandType: payload.commandType,
-          targetName: payload.targetName,
+          targetName,
           status: finishedRun.status,
           logPath,
           exitCode: finishedRun.exitCode,
           errorMessage: finishedRun.errorMessage,
           startedAt,
           finishedAt: finishedRun.finishedAt
-        });
+        };
+        if (typeof payload.onComplete === 'function') {
+          payload.onComplete(runResult);
+        }
+        resolve(runResult);
       };
 
       child.stdout.on('data', data => {
