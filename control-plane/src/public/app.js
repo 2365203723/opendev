@@ -208,6 +208,7 @@ async function loadDashboard() {
     state.dashboard = dashboard;
     renderDashboard(dashboard);
     await loadCrs();
+    await loadMemory();
     setStatus('已同步');
   } catch (error) {
     setStatus(error.message);
@@ -413,6 +414,190 @@ crElements.crForm.addEventListener('submit', async event => {
   } catch (error) {
     setStatus(error.message);
   }
+});
+
+// ── 记忆中心 ──────────────────────────────────────────────
+
+const memoryElements = {
+  compressBtn: document.getElementById('memory-compress-btn'),
+  eventToggle: document.getElementById('memory-event-toggle'),
+  eventForm: document.getElementById('memory-event-form'),
+  eventCancel: document.getElementById('memory-event-cancel'),
+  eventType: document.getElementById('memory-event-type'),
+  scopeType: document.getElementById('memory-scope-type'),
+  scopeId: document.getElementById('memory-scope-id'),
+  payload: document.getElementById('memory-payload'),
+  tabs: document.querySelectorAll('.memory-tab'),
+  eventsPanel: document.getElementById('memory-events-panel'),
+  episodesPanel: document.getElementById('memory-episodes-panel'),
+  factsPanel: document.getElementById('memory-facts-panel'),
+  packPanel: document.getElementById('memory-pack-panel')
+};
+
+let activeMemoryTab = 'events';
+
+function switchMemoryTab(tab) {
+  activeMemoryTab = tab;
+  memoryElements.tabs.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  memoryElements.eventsPanel.hidden = tab !== 'events';
+  memoryElements.episodesPanel.hidden = tab !== 'episodes';
+  memoryElements.factsPanel.hidden = tab !== 'facts';
+  memoryElements.packPanel.hidden = tab !== 'pack';
+}
+
+async function loadMemory() {
+  try {
+    const [eventsData, episodesData, factsData] = await Promise.all([
+      fetchJson('/api/memory/events?limit=20'),
+      fetchJson('/api/memory/episodes?limit=20'),
+      fetchJson('/api/memory/facts?status=active&limit=20')
+    ]);
+    renderMemoryEvents(eventsData.events || []);
+    renderMemoryEpisodes(episodesData.episodes || []);
+    renderMemoryFacts(factsData.facts || []);
+  } catch { /* 静默失败 */ }
+
+  try {
+    const pack = await fetchJson('/api/memory/packs/latest?scopeType=company&scopeId=default');
+    renderMemoryPack(pack);
+  } catch {
+    memoryElements.packPanel.replaceChildren(emptyMessage('暂无 Retrieval Pack。'));
+  }
+}
+
+function renderMemoryEvents(events) {
+  memoryElements.eventsPanel.replaceChildren();
+  if (events.length === 0) {
+    memoryElements.eventsPanel.appendChild(emptyMessage('暂无事件记录。'));
+    return;
+  }
+  events.forEach(ev => {
+    const card = document.createElement('div');
+    card.className = 'memory-event-card';
+    card.innerHTML = `<strong>${ev.eventType}</strong> <span class="badge">${ev.source}</span>
+      <div class="meta">${ev.scopeType}/${ev.scopeId} · ${new Date(ev.occurredAt).toLocaleString()}</div>`;
+    memoryElements.eventsPanel.appendChild(card);
+  });
+}
+
+function renderMemoryEpisodes(episodes) {
+  memoryElements.episodesPanel.replaceChildren();
+  if (episodes.length === 0) {
+    memoryElements.episodesPanel.appendChild(emptyMessage('暂无 Episode。'));
+    return;
+  }
+  episodes.forEach(ep => {
+    const card = document.createElement('div');
+    card.className = 'memory-episode-card';
+    card.innerHTML = `<strong>${ep.title}</strong>
+      <div>${ep.summary}</div>
+      <div class="meta">${ep.scopeType}/${ep.scopeId} · ${ep.conclusion}</div>`;
+    memoryElements.episodesPanel.appendChild(card);
+  });
+}
+
+function renderMemoryFacts(facts) {
+  memoryElements.factsPanel.replaceChildren();
+  if (facts.length === 0) {
+    memoryElements.factsPanel.appendChild(emptyMessage('暂无 Fact。'));
+    return;
+  }
+  facts.forEach(fact => {
+    const card = document.createElement('div');
+    card.className = 'memory-fact-card';
+    const rejectBtn = document.createElement('button');
+    rejectBtn.className = 'button';
+    rejectBtn.textContent = '拒绝';
+    rejectBtn.style.cssText = 'font-size:0.75rem;padding:2px 8px;margin-left:8px;';
+    rejectBtn.addEventListener('click', () => rejectFact(fact.id));
+    card.innerHTML = `<strong>${fact.factType}</strong> <span class="badge">${fact.status}</span>`;
+    card.appendChild(rejectBtn);
+    const content = document.createElement('div');
+    content.textContent = fact.content;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${fact.scopeType}/${fact.scopeId} · confidence: ${fact.confidence}`;
+    card.appendChild(content);
+    card.appendChild(meta);
+    memoryElements.factsPanel.appendChild(card);
+  });
+}
+
+function renderMemoryPack(pack) {
+  memoryElements.packPanel.replaceChildren();
+  if (!pack) {
+    memoryElements.packPanel.appendChild(emptyMessage('暂无 Retrieval Pack。'));
+    return;
+  }
+  const box = document.createElement('div');
+  box.className = 'memory-pack-box';
+  try {
+    const content = typeof pack.content === 'string' ? JSON.parse(pack.content) : pack.content;
+    box.textContent = JSON.stringify(content, null, 2);
+  } catch {
+    box.textContent = pack.content || '';
+  }
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.style.marginTop = '8px';
+  meta.textContent = `生成时间：${new Date(pack.generatedAt).toLocaleString()} · 过期：${new Date(pack.expiresAt).toLocaleString()}`;
+  memoryElements.packPanel.appendChild(box);
+  memoryElements.packPanel.appendChild(meta);
+}
+
+async function rejectFact(factId) {
+  try {
+    await fetchJson(`/api/memory/facts/${factId}/reject`, { method: 'PATCH' });
+    await loadMemory();
+  } catch (err) {
+    setStatus(err.message);
+  }
+}
+
+async function submitMemoryEvent(event) {
+  event.preventDefault();
+  const payload = {
+    eventType: memoryElements.eventType.value,
+    scopeType: memoryElements.scopeType.value,
+    scopeId: memoryElements.scopeId.value.trim(),
+    payload: { message: memoryElements.payload.value.trim() },
+    occurredAt: new Date().toISOString()
+  };
+  try {
+    await fetchJson('/api/memory/events', { method: 'POST', body: JSON.stringify(payload) });
+    memoryElements.eventForm.hidden = true;
+    memoryElements.eventForm.reset();
+    await loadMemory();
+  } catch (err) {
+    setStatus(err.message);
+  }
+}
+
+async function triggerMemoryCompress() {
+  try {
+    await fetchJson('/api/memory/compress', {
+      method: 'POST',
+      body: JSON.stringify({ scopeType: 'company', scopeId: 'default' })
+    });
+    setStatus('记忆压缩已触发');
+  } catch (err) {
+    setStatus(err.message);
+  }
+}
+
+memoryElements.eventToggle.addEventListener('click', () => {
+  memoryElements.eventForm.hidden = !memoryElements.eventForm.hidden;
+});
+memoryElements.eventCancel.addEventListener('click', () => {
+  memoryElements.eventForm.hidden = true;
+  memoryElements.eventForm.reset();
+});
+memoryElements.eventForm.addEventListener('submit', submitMemoryEvent);
+memoryElements.compressBtn.addEventListener('click', triggerMemoryCompress);
+memoryElements.tabs.forEach(btn => {
+  btn.addEventListener('click', () => switchMemoryTab(btn.dataset.tab));
 });
 
 loadDashboard();

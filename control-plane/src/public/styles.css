@@ -445,6 +445,64 @@ select:focus {
   color: var(--color-subtle);
 }
 
+/* 记忆中心 */
+.memory-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.memory-tab {
+  background: none;
+  border: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  font-size: 0.875rem;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.memory-tab:hover {
+  color: var(--color-text);
+  background: rgba(255,255,255,0.05);
+}
+
+.memory-tab.active {
+  color: var(--color-primary);
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.memory-event-card,
+.memory-episode-card,
+.memory-fact-card {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-panel-solid);
+  font-size: 0.875rem;
+}
+
+.memory-event-card .meta,
+.memory-episode-card .meta,
+.memory-fact-card .meta {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  margin-top: var(--space-1);
+}
+
+.memory-pack-box {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-panel-solid);
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

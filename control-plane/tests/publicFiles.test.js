@@ -24,4 +24,14 @@ describe('public Web Console files', () => {
     expect(html).toContain('id="cr-form"');
     expect(html).toContain('id="cr-list"');
   });
+
+  it('includes memory center section with required ids', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'public', 'index.html'), 'utf8');
+
+    expect(html).toContain('id="memory-section"');
+    expect(html).toContain('id="memory-events-panel"');
+    expect(html).toContain('id="memory-facts-panel"');
+    expect(html).toContain('id="memory-pack-panel"');
+    expect(html).toContain('id="memory-compress-btn"');
+  });
 });
