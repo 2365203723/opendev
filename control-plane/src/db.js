@@ -66,6 +66,49 @@ function openDatabase(databasePath) {
       started_at TEXT NOT NULL,
       finished_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS change_requests (
+      id TEXT PRIMARY KEY,
+      project_name TEXT NOT NULL,
+      title TEXT NOT NULL,
+      source TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      current_behavior TEXT NOT NULL,
+      expected_behavior TEXT NOT NULL,
+      acceptance_criteria TEXT NOT NULL,
+      priority TEXT NOT NULL DEFAULT 'medium',
+      status TEXT NOT NULL DEFAULT 'open',
+      ia_run_id TEXT,
+      patch_run_id TEXT,
+      regression_run_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (project_name) REFERENCES projects(name) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS cr_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cr_id TEXT NOT NULL,
+      doc_type TEXT NOT NULL,
+      path TEXT NOT NULL,
+      content_summary TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (cr_id) REFERENCES change_requests(id) ON DELETE CASCADE,
+      UNIQUE(cr_id, doc_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS regression_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cr_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      total_tests INTEGER,
+      passed_tests INTEGER,
+      failed_tests INTEGER,
+      report_path TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (cr_id) REFERENCES change_requests(id) ON DELETE CASCADE
+    );
   `);
   return db;
 }

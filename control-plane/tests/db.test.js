@@ -28,8 +28,11 @@ describe('SQLite store', () => {
     expect(tables).toEqual([
       'agents',
       'artifacts',
+      'change_requests',
+      'cr_documents',
       'gates',
       'projects',
+      'regression_results',
       'runs',
       'sqlite_sequence'
     ]);
