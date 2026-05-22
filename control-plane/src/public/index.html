@@ -64,6 +64,60 @@
       <h2>最近日志</h2>
       <div id="logs-list" class="log-list"></div>
     </section>
+
+    <section class="panel" id="cr-section">
+      <div class="panel-heading">
+        <h2>迭代中心</h2>
+        <button id="new-cr-toggle" class="button">新建变更请求</button>
+      </div>
+
+      <form id="cr-form" class="cr-form" hidden>
+        <label>项目名
+          <input id="cr-project-name" type="text" required>
+        </label>
+        <label>标题
+          <input id="cr-title" type="text" required>
+        </label>
+        <label>来源
+          <select id="cr-source">
+            <option value="user_input">用户输入</option>
+            <option value="qa_finding">QA 发现</option>
+            <option value="online_issue">线上问题</option>
+            <option value="internal">内部改进</option>
+          </select>
+        </label>
+        <label>范围
+          <select id="cr-scope">
+            <option value="project">项目</option>
+            <option value="workstream">工作流</option>
+            <option value="milestone">里程碑</option>
+          </select>
+        </label>
+        <label>优先级
+          <select id="cr-priority">
+            <option value="medium">中</option>
+            <option value="high">高</option>
+            <option value="critical">紧急</option>
+            <option value="low">低</option>
+          </select>
+        </label>
+        <label>当前行为
+          <textarea id="cr-current-behavior" rows="2" required></textarea>
+        </label>
+        <label>期望行为
+          <textarea id="cr-expected-behavior" rows="2" required></textarea>
+        </label>
+        <label>验收标准（每行一条）
+          <textarea id="cr-acceptance-criteria" rows="3" required></textarea>
+        </label>
+        <div class="form-actions">
+          <button class="button primary" type="submit">提交</button>
+          <button id="cr-form-cancel" class="button" type="button">取消</button>
+        </div>
+      </form>
+
+      <div id="cr-list" class="stack"></div>
+    </section>
   </main>
   <script src="/app.js"></script>
 </body>

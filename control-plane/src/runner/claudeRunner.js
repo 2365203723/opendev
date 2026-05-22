@@ -11,13 +11,22 @@ function createClaudeRunner(options = {}) {
   }
 
   return {
-    start: payload => new Promise(resolve => {
+    start: payload => new Promise((resolve, reject) => {
+      if (payload.commandType === 'patch') {
+        if (!payload.crId) {
+          return reject(new Error('patch commandType requires crId'));
+        }
+      }
+
+      const targetName = payload.commandType === 'patch' ? payload.crId : payload.targetName;
       const command = buildClaudeCommand({
         claudeCommand: config.claudeCommand,
         claudeAssetsDir: config.claudeAssetsDir,
         commandType: payload.commandType,
-        targetName: payload.targetName
+        targetName,
+        ...payload
       });
+
       const id = idFn();
       const startedAt = nowFn();
       const logPath = path.join(config.logsDir, `${id}.log`).replace(/\\/g, '/');
@@ -25,7 +34,7 @@ function createClaudeRunner(options = {}) {
       store.createRun({
         id,
         commandType: payload.commandType,
-        targetName: payload.targetName,
+        targetName,
         status: 'running',
         prompt: command.prompt,
         logPath,
@@ -42,17 +51,21 @@ function createClaudeRunner(options = {}) {
         }
         isFinished = true;
         store.finishRun(finishedRun);
-        resolve({
+        const runResult = {
           id,
           commandType: payload.commandType,
-          targetName: payload.targetName,
+          targetName,
           status: finishedRun.status,
           logPath,
           exitCode: finishedRun.exitCode,
           errorMessage: finishedRun.errorMessage,
           startedAt,
           finishedAt: finishedRun.finishedAt
-        });
+        };
+        if (typeof payload.onComplete === 'function') {
+          payload.onComplete(runResult);
+        }
+        resolve(runResult);
       };
 
       child.stdout.on('data', data => {

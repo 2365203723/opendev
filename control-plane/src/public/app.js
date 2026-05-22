@@ -207,6 +207,7 @@ async function loadDashboard() {
     const dashboard = await fetchJson('/api/dashboard');
     state.dashboard = dashboard;
     renderDashboard(dashboard);
+    await loadCrs();
     setStatus('已同步');
   } catch (error) {
     setStatus(error.message);
@@ -256,5 +257,162 @@ async function startRunner(event) {
 elements.refreshDashboard.addEventListener('click', loadDashboard);
 elements.rebuildIndex.addEventListener('click', rebuildIndex);
 elements.runnerForm.addEventListener('submit', startRunner);
+
+// ── 迭代中心 ──────────────────────────────────────────────
+
+const crElements = {
+  section: document.getElementById('cr-section'),
+  newCrToggle: document.getElementById('new-cr-toggle'),
+  crForm: document.getElementById('cr-form'),
+  crFormCancel: document.getElementById('cr-form-cancel'),
+  crList: document.getElementById('cr-list'),
+  projectName: document.getElementById('cr-project-name'),
+  title: document.getElementById('cr-title'),
+  source: document.getElementById('cr-source'),
+  scope: document.getElementById('cr-scope'),
+  priority: document.getElementById('cr-priority'),
+  currentBehavior: document.getElementById('cr-current-behavior'),
+  expectedBehavior: document.getElementById('cr-expected-behavior'),
+  acceptanceCriteria: document.getElementById('cr-acceptance-criteria')
+};
+
+const CR_STATUS_LABELS = {
+  open: '待分析',
+  ia_running: 'IA 运行中',
+  ia_done: 'IA 完成',
+  patch_pending: '待执行',
+  patch_running: 'Patch 运行中',
+  regression_running: '回归测试中',
+  released: '已发布',
+  cancelled: '已取消'
+};
+
+async function loadCrs() {
+  try {
+    const data = await fetchJson('/api/change-requests');
+    renderCrList(data.changeRequests || []);
+  } catch {
+    // 静默失败，不影响主看板
+  }
+}
+
+function renderCrList(crs) {
+  crElements.crList.replaceChildren();
+  if (crs.length === 0) {
+    crElements.crList.appendChild(emptyMessage('暂无变更请求。'));
+    return;
+  }
+  crs.forEach(cr => crElements.crList.appendChild(renderCrCard(cr)));
+}
+
+function renderCrCard(cr) {
+  const card = document.createElement('article');
+  card.className = 'cr-card';
+
+  const header = document.createElement('div');
+  header.className = 'cr-card-header';
+
+  const title = document.createElement('span');
+  title.className = 'cr-card-title';
+  title.textContent = cr.title;
+
+  const statusBadge = createBadge(CR_STATUS_LABELS[cr.status] || cr.status, cr.status);
+  const priorityBadge = createBadge(cr.priority, 'priority');
+
+  header.appendChild(title);
+  header.appendChild(statusBadge);
+  header.appendChild(priorityBadge);
+
+  const meta = document.createElement('p');
+  meta.className = 'cr-card-meta';
+  meta.textContent = `${cr.projectName} · ${cr.source} · ${new Date(cr.createdAt).toLocaleString('zh-CN')}`;
+
+  const actions = document.createElement('div');
+  actions.className = 'cr-card-actions';
+
+  if (cr.status === 'ia_done' || cr.status === 'patch_pending') {
+    const execBtn = document.createElement('button');
+    execBtn.className = 'button primary';
+    execBtn.textContent = cr.status === 'patch_pending' ? '重新执行 Patch' : '执行 Patch';
+    execBtn.addEventListener('click', () => executePatch(cr.id));
+    actions.appendChild(execBtn);
+  }
+
+  if (cr.status !== 'released' && cr.status !== 'cancelled') {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'button';
+    cancelBtn.textContent = '取消';
+    cancelBtn.addEventListener('click', () => cancelCr(cr.id));
+    actions.appendChild(cancelBtn);
+  }
+
+  card.appendChild(header);
+  card.appendChild(meta);
+  if (actions.children.length > 0) card.appendChild(actions);
+
+  return card;
+}
+
+async function executePatch(crId) {
+  try {
+    await fetchJson(`/api/change-requests/${crId}/execute-patch`, { method: 'POST' });
+    setStatus('Patch 已启动');
+    await loadCrs();
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function cancelCr(crId) {
+  try {
+    await fetchJson(`/api/change-requests/${crId}/cancel`, { method: 'PATCH' });
+    setStatus('变更请求已取消');
+    await loadCrs();
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+crElements.newCrToggle.addEventListener('click', () => {
+  const hidden = crElements.crForm.hidden;
+  crElements.crForm.hidden = !hidden;
+  crElements.newCrToggle.textContent = hidden ? '收起' : '新建变更请求';
+});
+
+crElements.crFormCancel.addEventListener('click', () => {
+  crElements.crForm.hidden = true;
+  crElements.crForm.reset();
+  crElements.newCrToggle.textContent = '新建变更请求';
+});
+
+crElements.crForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const criteria = crElements.acceptanceCriteria.value
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const payload = {
+    projectName: crElements.projectName.value.trim(),
+    title: crElements.title.value.trim(),
+    source: crElements.source.value,
+    scope: crElements.scope.value,
+    priority: crElements.priority.value,
+    currentBehavior: crElements.currentBehavior.value.trim(),
+    expectedBehavior: crElements.expectedBehavior.value.trim(),
+    acceptanceCriteria: criteria
+  };
+
+  try {
+    await fetchJson('/api/change-requests', { method: 'POST', body: JSON.stringify(payload) });
+    crElements.crForm.hidden = true;
+    crElements.crForm.reset();
+    crElements.newCrToggle.textContent = '新建变更请求';
+    setStatus('变更请求已提交，IA 分析中');
+    await loadCrs();
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
 
 loadDashboard();
