@@ -18,25 +18,14 @@ function createClaudeRunner(options = {}) {
         }
       }
 
-      let command;
-      let targetName;
-      if (payload.commandType === 'patch') {
-        targetName = payload.crId;
-        const prompt = `在 ${config.claudeAssetsDir} 中执行 /patch ${payload.crId}。phase=${payload.patchPhase} role=${payload.agentRole} project=${payload.projectName}。遵守项目 CLAUDE.md、governance 规则和 Codex 双审要求。`;
-        command = {
-          file: config.claudeCommand,
-          args: ['-p', prompt, '--output-format', 'json'],
-          prompt
-        };
-      } else {
-        targetName = payload.targetName;
-        command = buildClaudeCommand({
-          claudeCommand: config.claudeCommand,
-          claudeAssetsDir: config.claudeAssetsDir,
-          commandType: payload.commandType,
-          targetName
-        });
-      }
+      const targetName = payload.commandType === 'patch' ? payload.crId : payload.targetName;
+      const command = buildClaudeCommand({
+        claudeCommand: config.claudeCommand,
+        claudeAssetsDir: config.claudeAssetsDir,
+        commandType: payload.commandType,
+        targetName,
+        ...payload
+      });
 
       const id = idFn();
       const startedAt = nowFn();
