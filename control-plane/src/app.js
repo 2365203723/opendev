@@ -3,6 +3,7 @@ const helmet = require('helmet');
 const path = require('path');
 const { readRecentLogs } = require('./indexer/logReader');
 const { countLessonFiles } = require('./indexer/lessonReader');
+const { createStatusWatcher } = require('./indexer/statusWatcher');
 
 // ─── memory helpers ───────────────────────────────────────────────────────────
 
@@ -198,7 +199,22 @@ function validateRunPayload(body) {
 
 function createApp(dependencies) {
   const app = express();
-  const { config, store, indexer, runner } = dependencies;
+  const { config, store, indexer, runner, watcherFactory } = dependencies;
+
+  // 启动文件系统 watcher（可通过 watcherFactory 注入 mock）
+  const factory = watcherFactory !== undefined ? watcherFactory : createStatusWatcher;
+  const statusWatcher = factory ? factory({
+    projectsDir: config.projectsDir,
+    writeEvent: (event) => writeEvent(store, event),
+    triggerCompress: (scopeType, scopeId) => triggerCompress(scopeType, scopeId, store, runner, config),
+    debounceMs: 500
+  }) : null;
+
+  app.close = function () {
+    if (statusWatcher) {
+      try { statusWatcher.close(); } catch { /* ignore */ }
+    }
+  };
 
   app.use(helmet({
     contentSecurityPolicy: {
@@ -694,6 +710,145 @@ function createApp(dependencies) {
         return;
       }
       res.json(event);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ─── memory episodes API ──────────────────────────────────────────────────────
+
+  app.get('/api/memory/episodes', (req, res, next) => {
+    try {
+      const { scopeType, scopeId } = req.query;
+      const limit = req.query.limit !== undefined ? parseInt(req.query.limit, 10) : 20;
+      const offset = req.query.offset !== undefined ? parseInt(req.query.offset, 10) : 0;
+
+      const filter = {};
+      if (scopeType) filter.scopeType = scopeType;
+      if (scopeId) filter.scopeId = scopeId;
+
+      const allEpisodes = store.listEpisodes({ ...filter, limit: 100000, offset: 0 });
+      const total = allEpisodes.length;
+      const episodes = store.listEpisodes({ ...filter, limit, offset });
+
+      res.json({ episodes, total });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/memory/episodes/:id', (req, res, next) => {
+    try {
+      const episode = store.getEpisode(req.params.id);
+      if (!episode) {
+        res.status(404).json({ error: 'episode not found' });
+        return;
+      }
+      res.json(episode);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ─── memory facts API ─────────────────────────────────────────────────────────
+
+  app.get('/api/memory/facts', (req, res, next) => {
+    try {
+      const { scopeType, scopeId, status } = req.query;
+      const limit = req.query.limit !== undefined ? parseInt(req.query.limit, 10) : 20;
+      const offset = req.query.offset !== undefined ? parseInt(req.query.offset, 10) : 0;
+
+      const filter = {};
+      if (scopeType) filter.scopeType = scopeType;
+      if (scopeId) filter.scopeId = scopeId;
+      if (status) filter.status = status;
+
+      const allFacts = store.listFacts({ ...filter, limit: 100000, offset: 0 });
+      const total = allFacts.length;
+      const facts = store.listFacts({ ...filter, limit, offset });
+
+      res.json({ facts, total });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/memory/facts/:id', (req, res, next) => {
+    try {
+      const fact = store.getFact(req.params.id);
+      if (!fact) {
+        res.status(404).json({ error: 'fact not found' });
+        return;
+      }
+      res.json(fact);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/memory/facts/:id/reject', (req, res, next) => {
+    try {
+      const existing = store.getFact(req.params.id);
+      if (!existing) {
+        res.status(404).json({ error: 'fact not found' });
+        return;
+      }
+      const updated = store.updateFactStatus(req.params.id, 'rejected');
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ─── memory packs API ─────────────────────────────────────────────────────────
+  // 注意：/latest 必须在 /:id 之前注册
+
+  app.get('/api/memory/packs/latest', (req, res, next) => {
+    try {
+      const { scopeType, scopeId } = req.query;
+      const pack = store.getLatestRetrievalPack(scopeType, scopeId);
+      if (!pack) {
+        res.status(404).json({ error: 'no active pack found' });
+        return;
+      }
+      res.json(pack);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/memory/packs', (req, res, next) => {
+    try {
+      const { scopeType, scopeId } = req.query;
+      const limit = req.query.limit !== undefined ? parseInt(req.query.limit, 10) : 10;
+      const packs = store.listRetrievalPacks(scopeType, scopeId, limit);
+      res.json({ packs });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ─── manual compress trigger ──────────────────────────────────────────────────
+
+  app.post('/api/memory/compress', (req, res, next) => {
+    try {
+      const { scopeType, scopeId } = req.body || {};
+
+      if (!scopeType) {
+        res.status(400).json({ error: 'scopeType is required' });
+        return;
+      }
+      if (!scopeId) {
+        res.status(400).json({ error: 'scopeId is required' });
+        return;
+      }
+      if (!runner) {
+        res.status(503).json({ error: 'runner not available' });
+        return;
+      }
+
+      setImmediate(() => triggerCompress(scopeType, scopeId, store, runner, config));
+      res.status(202).json({ message: 'compress triggered' });
     } catch (error) {
       next(error);
     }
