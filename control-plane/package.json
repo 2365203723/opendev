@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "smoke": "node -e \"fetch('http://127.0.0.1:3100/api/health').then(r=>r.json()).then(j=>{if(!j.ok)process.exit(1);console.log(JSON.stringify(j))})\"",
     "audit:prod": "npm audit --omit=dev"
   },
   "dependencies": {
