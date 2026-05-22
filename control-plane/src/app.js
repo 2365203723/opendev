@@ -4,6 +4,7 @@ const path = require('path');
 const { readRecentLogs } = require('./indexer/logReader');
 const { countLessonFiles } = require('./indexer/lessonReader');
 const { createStatusWatcher } = require('./indexer/statusWatcher');
+const { buildClaudeCommand } = require('./runner/commandBuilder');
 
 // ─── memory helpers ───────────────────────────────────────────────────────────
 
@@ -304,7 +305,34 @@ function createApp(dependencies) {
         res.status(400).json({ error: validation.error });
         return;
       }
-      const run = await runner.start(validation.payload);
+
+      // 注入 Retrieval Pack
+      let packContext = '';
+      if (store && typeof store.getLatestRetrievalPack === 'function') {
+        const pack = store.getLatestRetrievalPack('company', 'default');
+        if (pack) {
+          try {
+            const packContent = typeof pack.content === 'string' ? pack.content : JSON.stringify(pack.content);
+            const truncated = packContent.length > 4000 ? packContent.slice(0, 4000) + '...[truncated]' : packContent;
+            packContext = `\n\n## Retrieval Pack（上下文记忆）\n\n${truncated}`;
+          } catch { /* 静默失败 */ }
+        }
+      }
+
+      const runPayload = { ...validation.payload };
+      if (packContext) {
+        try {
+          const command = buildClaudeCommand({
+            claudeCommand: '',
+            claudeAssetsDir: config.claudeAssetsDir || '',
+            commandType: validation.payload.commandType,
+            targetName: validation.payload.targetName
+          });
+          runPayload.prompt = command.prompt + packContext;
+        } catch { /* 静默失败，不注入 */ }
+      }
+
+      const run = await runner.start(runPayload);
       if (store) {
         writeEvent(store, {
           eventType: 'command_run',

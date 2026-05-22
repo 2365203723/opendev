@@ -901,3 +901,95 @@ describe('POST /api/memory/compress', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ─── Runner 注入 Retrieval Pack ───────────────────────────────────────────────
+
+describe('POST /api/runs — Retrieval Pack 注入', () => {
+  let store;
+  let capturedPrompt;
+  let mockRunner;
+
+  beforeEach(() => {
+    const db = createDb();
+    store = createStore(db);
+    capturedPrompt = null;
+    mockRunner = {
+      start: vi.fn().mockImplementation(async (payload) => {
+        capturedPrompt = payload.prompt || null;
+        return { id: 'run-inject-1', status: 'running' };
+      })
+    };
+  });
+
+  it('有未过期 Pack → runner.start 的 prompt 包含 Pack content', async () => {
+    const future = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const packContent = JSON.stringify({ taskGoal: '测试目标', activeFacts: [] });
+    store.upsertRetrievalPack({
+      id: 'pack-inject-1',
+      scopeType: 'company',
+      scopeId: 'default',
+      runId: null,
+      content: packContent,
+      episodeIds: '[]',
+      factIds: '[]',
+      generatedAt: now,
+      expiresAt: future
+    });
+
+    const app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: mockRunner
+    });
+
+    const res = await request(app).post('/api/runs').send({ commandType: 'intake', targetName: 'demo' });
+    expect(res.status).toBe(202);
+    expect(mockRunner.start).toHaveBeenCalled();
+    expect(capturedPrompt).toContain('测试目标');
+  });
+
+  it('无 Pack → runner.start 正常调用，prompt 不含 Pack 内容', async () => {
+    const app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: mockRunner
+    });
+
+    const res = await request(app).post('/api/runs').send({ commandType: 'intake', targetName: 'demo' });
+    expect(res.status).toBe(202);
+    expect(mockRunner.start).toHaveBeenCalled();
+    expect(capturedPrompt == null || !capturedPrompt.includes('Retrieval Pack')).toBe(true);
+  });
+
+  it('Pack 已过期 → runner.start 正常调用，prompt 不含 Pack 内容', async () => {
+    const past = '2000-01-01T00:00:00.000Z';
+    const now = new Date().toISOString();
+    const packContent = JSON.stringify({ taskGoal: '过期目标', activeFacts: [] });
+    store.upsertRetrievalPack({
+      id: 'pack-expired-1',
+      scopeType: 'company',
+      scopeId: 'default',
+      runId: null,
+      content: packContent,
+      episodeIds: '[]',
+      factIds: '[]',
+      generatedAt: now,
+      expiresAt: past
+    });
+
+    const app = createApp({
+      config: { version: '0.1.0', logsDir: 'missing', lessonsDir: 'missing', claudeAssetsDir: 'missing' },
+      store,
+      indexer: { rebuild: () => ({ indexedProjects: 1, errors: [] }) },
+      runner: mockRunner
+    });
+
+    const res = await request(app).post('/api/runs').send({ commandType: 'intake', targetName: 'demo' });
+    expect(res.status).toBe(202);
+    expect(mockRunner.start).toHaveBeenCalled();
+    expect(capturedPrompt == null || !capturedPrompt.includes('过期目标')).toBe(true);
+  });
+});
