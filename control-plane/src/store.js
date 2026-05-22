@@ -187,7 +187,156 @@ function createStore(db) {
       WHERE cr_id = ?
       ORDER BY created_at DESC
       LIMIT 1
-    `).get(crId) || null
+    `).get(crId) || null,
+
+    // ─── memory: raw_events ───────────────────────────────────────────────────
+    createRawEvent: event => db.prepare(`
+      INSERT INTO raw_events (id, event_type, scope_type, scope_id, payload, source, occurred_at)
+      VALUES (@id, @eventType, @scopeType, @scopeId, @payload, @source, @occurredAt)
+    `).run(event),
+    getRawEvent: id => db.prepare(`
+      SELECT id, event_type AS eventType, scope_type AS scopeType, scope_id AS scopeId,
+             payload, source, occurred_at AS occurredAt, created_at AS createdAt
+      FROM raw_events
+      WHERE id = ?
+    `).get(id) || null,
+    listRawEvents: ({ scopeType, scopeId, eventType, limit = 100, offset = 0 } = {}) => {
+      const conditions = [];
+      const params = [];
+      if (scopeType !== undefined) { conditions.push('scope_type = ?'); params.push(scopeType); }
+      if (scopeId !== undefined) { conditions.push('scope_id = ?'); params.push(scopeId); }
+      if (eventType !== undefined) { conditions.push('event_type = ?'); params.push(eventType); }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      params.push(limit, offset);
+      return db.prepare(`
+        SELECT id, event_type AS eventType, scope_type AS scopeType, scope_id AS scopeId,
+               payload, source, occurred_at AS occurredAt, created_at AS createdAt
+        FROM raw_events
+        ${where}
+        ORDER BY occurred_at DESC
+        LIMIT ? OFFSET ?
+      `).all(...params);
+    },
+
+    // ─── memory: episodes ─────────────────────────────────────────────────────
+    createEpisode: episode => db.prepare(`
+      INSERT INTO episodes
+        (id, scope_type, scope_id, title, summary, event_ids, artifact_paths,
+         conclusion, generated_by_run_id, valid_from)
+      VALUES
+        (@id, @scopeType, @scopeId, @title, @summary, @eventIds, @artifactPaths,
+         @conclusion, @generatedByRunId, @validFrom)
+    `).run(episode),
+    getEpisode: id => db.prepare(`
+      SELECT id, scope_type AS scopeType, scope_id AS scopeId, title, summary,
+             event_ids AS eventIds, artifact_paths AS artifactPaths, conclusion,
+             generated_by_run_id AS generatedByRunId, valid_from AS validFrom,
+             created_at AS createdAt
+      FROM episodes
+      WHERE id = ?
+    `).get(id) || null,
+    listEpisodes: ({ scopeType, scopeId, limit = 100, offset = 0 } = {}) => {
+      const conditions = [];
+      const params = [];
+      if (scopeType !== undefined) { conditions.push('scope_type = ?'); params.push(scopeType); }
+      if (scopeId !== undefined) { conditions.push('scope_id = ?'); params.push(scopeId); }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      params.push(limit, offset);
+      return db.prepare(`
+        SELECT id, scope_type AS scopeType, scope_id AS scopeId, title, summary,
+               event_ids AS eventIds, artifact_paths AS artifactPaths, conclusion,
+               generated_by_run_id AS generatedByRunId, valid_from AS validFrom,
+               created_at AS createdAt
+        FROM episodes
+        ${where}
+        ORDER BY valid_from DESC
+        LIMIT ? OFFSET ?
+      `).all(...params);
+    },
+
+    // ─── memory: facts ────────────────────────────────────────────────────────
+    createFact: fact => db.prepare(`
+      INSERT INTO facts
+        (id, fact_type, scope_type, scope_id, content, source_event_ids, source_paths,
+         confidence, valid_from, expires_at, supersedes_id, status, generated_by_run_id)
+      VALUES
+        (@id, @factType, @scopeType, @scopeId, @content, @sourceEventIds, @sourcePaths,
+         @confidence, @validFrom, @expiresAt, @supersedesId, @status, @generatedByRunId)
+    `).run(fact),
+    getFact: id => db.prepare(`
+      SELECT id, fact_type AS factType, scope_type AS scopeType, scope_id AS scopeId,
+             content, source_event_ids AS sourceEventIds, source_paths AS sourcePaths,
+             confidence, valid_from AS validFrom, expires_at AS expiresAt,
+             supersedes_id AS supersedesId, status, generated_by_run_id AS generatedByRunId,
+             created_at AS createdAt
+      FROM facts
+      WHERE id = ?
+    `).get(id) || null,
+    listFacts: ({ scopeType, scopeId, status, limit = 100, offset = 0 } = {}) => {
+      const conditions = [];
+      const params = [];
+      if (scopeType !== undefined) { conditions.push('scope_type = ?'); params.push(scopeType); }
+      if (scopeId !== undefined) { conditions.push('scope_id = ?'); params.push(scopeId); }
+      if (status !== undefined) { conditions.push('status = ?'); params.push(status); }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      params.push(limit, offset);
+      return db.prepare(`
+        SELECT id, fact_type AS factType, scope_type AS scopeType, scope_id AS scopeId,
+               content, source_event_ids AS sourceEventIds, source_paths AS sourcePaths,
+               confidence, valid_from AS validFrom, expires_at AS expiresAt,
+               supersedes_id AS supersedesId, status, generated_by_run_id AS generatedByRunId,
+               created_at AS createdAt
+        FROM facts
+        ${where}
+        ORDER BY valid_from DESC
+        LIMIT ? OFFSET ?
+      `).all(...params);
+    },
+    updateFactStatus: (id, status) => {
+      db.prepare('UPDATE facts SET status = ? WHERE id = ?').run(status, id);
+      return db.prepare(`
+        SELECT id, fact_type AS factType, scope_type AS scopeType, scope_id AS scopeId,
+               content, source_event_ids AS sourceEventIds, source_paths AS sourcePaths,
+               confidence, valid_from AS validFrom, expires_at AS expiresAt,
+               supersedes_id AS supersedesId, status, generated_by_run_id AS generatedByRunId,
+               created_at AS createdAt
+        FROM facts
+        WHERE id = ?
+      `).get(id) || null;
+    },
+
+    // ─── memory: retrieval_packs ──────────────────────────────────────────────
+    upsertRetrievalPack: pack => db.prepare(`
+      INSERT OR REPLACE INTO retrieval_packs
+        (id, scope_type, scope_id, run_id, content, episode_ids, fact_ids, generated_at, expires_at)
+      VALUES
+        (@id, @scopeType, @scopeId, @runId, @content, @episodeIds, @factIds, @generatedAt, @expiresAt)
+    `).run(pack),
+    getRetrievalPack: id => db.prepare(`
+      SELECT id, scope_type AS scopeType, scope_id AS scopeId, run_id AS runId,
+             content, episode_ids AS episodeIds, fact_ids AS factIds,
+             generated_at AS generatedAt, expires_at AS expiresAt, created_at AS createdAt
+      FROM retrieval_packs
+      WHERE id = ?
+    `).get(id) || null,
+    getLatestRetrievalPack: (scopeType, scopeId) => db.prepare(`
+      SELECT id, scope_type AS scopeType, scope_id AS scopeId, run_id AS runId,
+             content, episode_ids AS episodeIds, fact_ids AS factIds,
+             generated_at AS generatedAt, expires_at AS expiresAt, created_at AS createdAt
+      FROM retrieval_packs
+      WHERE scope_type = ? AND scope_id = ? AND expires_at > datetime('now')
+      ORDER BY generated_at DESC
+      LIMIT 1
+    `).get(scopeType, scopeId) || null,
+    listRetrievalPacks: (scopeType, scopeId, limit = 100) => db.prepare(`
+      SELECT id, scope_type AS scopeType, scope_id AS scopeId, run_id AS runId,
+             content, episode_ids AS episodeIds, fact_ids AS factIds,
+             generated_at AS generatedAt, expires_at AS expiresAt, created_at AS createdAt
+      FROM retrieval_packs
+      WHERE scope_type = ? AND scope_id = ?
+      ORDER BY generated_at DESC
+      LIMIT ?
+    `).all(scopeType, scopeId, limit)
   };
 }
 
