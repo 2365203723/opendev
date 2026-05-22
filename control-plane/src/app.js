@@ -302,6 +302,148 @@ function createApp(dependencies) {
     }
   });
 
+  // ---------------------------------------------------------------------------
+  // execute-patch / trigger-regression state machine helpers
+  // ---------------------------------------------------------------------------
+
+  function executePatchComplete(runResult, crId, crStore, crRunner, crConfig) {
+    if (runResult.status === 'completed') {
+      crStore.updateCrStatus(crId, { status: 'regression_running', patchRunId: runResult.id, updatedAt: new Date().toISOString() });
+      triggerRegressionInternal(crId, crStore, crRunner, crConfig);
+    } else {
+      crStore.updateCrStatus(crId, { status: 'patch_pending', patchRunId: runResult.id, updatedAt: new Date().toISOString() });
+    }
+  }
+
+  async function triggerRegressionInternal(crId, crStore, crRunner, crConfig) {
+    if (!crRunner) return;
+    const cr = crStore.getCr(crId);
+    if (!cr) return;
+    const testCommand = `npm --prefix "${crConfig.claudeAssetsDir}/control-plane" run test:coverage`;
+    const releaseNotePath = `${crConfig.claudeAssetsDir}/release-${crId}.md`;
+    try {
+      await crRunner.start({
+        commandType: 'patch',
+        crId,
+        patchPhase: 'regression',
+        projectName: cr.projectName,
+        testCommand,
+        onComplete: (regressionResult) => regressionComplete(regressionResult, crId, crStore, releaseNotePath)
+      });
+    } catch {
+      crStore.updateCrStatus(crId, { status: 'patch_pending', updatedAt: new Date().toISOString() });
+    }
+  }
+
+  function regressionComplete(runResult, crId, crStore, releaseNotePath) {
+    const passed = runResult.status === 'completed';
+    crStore.createRegressionResult({
+      crId,
+      runId: runResult.id,
+      status: passed ? 'passed' : 'failed',
+      totalTests: null,
+      passedTests: null,
+      failedTests: null,
+      reportPath: releaseNotePath,
+      createdAt: new Date().toISOString()
+    });
+    crStore.updateCrStatus(crId, {
+      status: passed ? 'released' : 'patch_pending',
+      regressionRunId: runResult.id,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /api/change-requests/:id/execute-patch
+  // ---------------------------------------------------------------------------
+  app.post('/api/change-requests/:id/execute-patch', async (req, res, next) => {
+    try {
+      const cr = store.getCr(req.params.id);
+      if (!cr) {
+        res.status(404).json({ error: 'change request not found' });
+        return;
+      }
+      if (cr.status !== 'ia_done' && cr.status !== 'patch_pending') {
+        res.status(400).json({ error: `cannot execute patch in status: ${cr.status}` });
+        return;
+      }
+      const patchPlanDoc = store.getCrDocument(req.params.id, 'patch_plan');
+      if (!patchPlanDoc) {
+        res.status(400).json({ error: 'patch plan not found' });
+        return;
+      }
+      if (!runner) {
+        res.status(503).json({ error: 'runner unavailable' });
+        return;
+      }
+      // Check for conflicting patch_running or regression_running in same project
+      const allCrs = store.listCrs(cr.projectName);
+      const conflict = allCrs.find(
+        other => other.id !== cr.id && (other.status === 'patch_running' || other.status === 'regression_running')
+      );
+      if (conflict) {
+        res.status(409).json({ error: 'another patch is running' });
+        return;
+      }
+      store.updateCrStatus(req.params.id, { status: 'patch_running', updatedAt: new Date().toISOString() });
+      const crId = req.params.id;
+      setImmediate(async () => {
+        try {
+          await runner.start({
+            commandType: 'patch',
+            crId,
+            patchPhase: 'execute',
+            projectName: cr.projectName,
+            patchPlanPath: patchPlanDoc.path,
+            onComplete: (runResult) => executePatchComplete(runResult, crId, store, runner, config)
+          });
+        } catch {
+          store.updateCrStatus(crId, { status: 'patch_pending', updatedAt: new Date().toISOString() });
+        }
+      });
+      res.status(202).json({ crId, status: 'patch_running' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/change-requests/:id/trigger-regression
+  // ---------------------------------------------------------------------------
+  app.post('/api/change-requests/:id/trigger-regression', async (req, res, next) => {
+    try {
+      const cr = store.getCr(req.params.id);
+      if (!cr) {
+        res.status(404).json({ error: 'change request not found' });
+        return;
+      }
+      if (!runner) {
+        res.status(503).json({ error: 'runner unavailable' });
+        return;
+      }
+      const crId = req.params.id;
+      store.updateCrStatus(crId, { status: 'regression_running', updatedAt: new Date().toISOString() });
+      const releaseNotePath = `${config.claudeAssetsDir}/release-${crId}.md`;
+      setImmediate(async () => {
+        try {
+          await runner.start({
+            commandType: 'patch',
+            crId,
+            patchPhase: 'regression',
+            projectName: cr.projectName,
+            onComplete: (regressionResult) => regressionComplete(regressionResult, crId, store, releaseNotePath)
+          });
+        } catch {
+          store.updateCrStatus(crId, { status: 'patch_pending', updatedAt: new Date().toISOString() });
+        }
+      });
+      res.status(202).json({ crId, status: 'regression_running' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((req, res) => {
     res.status(404).json({ error: `not found: ${req.method} ${req.path}` });
   });
