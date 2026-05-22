@@ -171,6 +171,13 @@ function createStore(db) {
       FROM cr_documents
       WHERE cr_id = ? AND doc_type = ?
     `).get(crId, docType) || null,
+    listCrDocuments: (crId) => db.prepare(`
+      SELECT cr_id AS crId, doc_type AS docType, path, content_summary AS contentSummary,
+             created_at AS createdAt
+      FROM cr_documents
+      WHERE cr_id = ?
+      ORDER BY created_at ASC
+    `).all(crId),
     createRegressionResult: result => insertRegressionResult.run(result),
     getLatestRegressionResult: crId => db.prepare(`
       SELECT id, cr_id AS crId, run_id AS runId, status,
