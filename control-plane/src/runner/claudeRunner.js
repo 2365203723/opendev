@@ -41,7 +41,7 @@ function createClaudeRunner(options = {}) {
         startedAt
       });
 
-      const child = spawnFn(command.file, command.args, { cwd: config.claudeAssetsDir, shell: false });
+      const child = spawnFn(command.file, command.args, { cwd: config.claudeAssetsDir, shell: false, env: { ...process.env, ...(command.env || {}) } });
       const errors = [];
       let isFinished = false;
 

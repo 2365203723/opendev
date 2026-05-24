@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web-Outsource Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1419; color: #e7e9ea; }
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 24px; margin-bottom: 24px; color: #fff; }
+h2 { font-size: 18px; margin: 32px 0 16px; color: #8899a6; text-transform: uppercase; letter-spacing: 1px; }
+h3 { font-size: 16px; margin-bottom: 12px; color: #fff; }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid #2f3b47; }
+.tab { padding: 12px 20px; background: none; border: none; color: #8899a6; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+.tab:hover { color: #e7e9ea; }
+.tab.active { color: #1d9bf0; border-bottom-color: #1d9bf0; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 32px; }
+.card { background: #1c2732; border-radius: 12px; padding: 20px; border: 1px solid #2f3b47; }
+.card:hover { border-color: #3f4b57; }
+
+.stat { font-size: 32px; font-weight: 700; color: #1d9bf0; }
+.stat-label { font-size: 13px; color: #8899a6; margin-top: 4px; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 4px; }
+.badge-done { background: #00ba7c22; color: #00ba7c; }
+.badge-progress { background: #1d9bf022; color: #1d9bf0; }
+.badge-pending { background: #8899a622; color: #8899a6; }
+.badge-blocked { background: #f9197f22; color: #f9197f; }
+.badge-idea { background: #8899a622; color: #8899a6; }
+.badge-active { background: #1d9bf022; color: #1d9bf0; }
+.badge-planned { background: #8899a622; color: #8899a6; }
+.badge-todo { background: #8899a622; color: #8899a6; }
+.badge-backlog { background: #8899a622; color: #8899a6; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #2f3b47; font-size: 14px; }
+th { color: #8899a6; font-weight: 500; }
+tr:hover { background: #1c273255; }
+
+.hierarchy { margin-left: 20px; margin-top: 12px; }
+.hierarchy-item { padding: 8px 12px; margin-bottom: 8px; background: #1c2732; border-left: 3px solid #2f3b47; border-radius: 4px; }
+.hierarchy-item:hover { border-left-color: #1d9bf0; }
+
+.btn { background: #1d9bf0; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.btn:hover { background: #1a8cd8; }
+.btn-secondary { background: #2f3b47; }
+.btn-secondary:hover { background: #3f4b57; }
+
+.refresh-btn { position: fixed; top: 20px; right: 20px; }
+#status-msg { position: fixed; top: 20px; right: 140px; font-size: 12px; color: #8899a6; }
+
+.log-entry { font-family: monospace; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #2f3b4733; }
+.log-time { color: #8899a6; }
+.log-agent { color: #1d9bf0; }
+.log-error { color: #f9197f; }
+
+.empty { color: #8899a6; font-style: italic; padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Web-Outsource System Dashboard</h1>
+  <button class="refresh-btn btn" onclick="loadAll()">Refresh</button>
+  <span id="status-msg"></span>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('overview')">Overview</button>
+    <button class="tab" onclick="switchTab('products')">Products</button>
+    <button class="tab" onclick="switchTab('projects')">Projects</button>
+    <button class="tab" onclick="switchTab('agents')">Agents</button>
+    <button class="tab" onclick="switchTab('logs')">Logs</button>
+  </div>
+
+  <div id="overview-tab" class="tab-content active">
+    <h2>System Stats</h2>
+    <div class="grid">
+      <div class="card"><div class="stat" id="total-products">-</div><div class="stat-label">Products</div></div>
+      <div class="card"><div class="stat" id="total-projects">-</div><div class="stat-label">Projects</div></div>
+      <div class="card"><div class="stat" id="active-agents">-</div><div class="stat-label">Active Agents</div></div>
+      <div class="card"><div class="stat" id="lessons-count">-</div><div class="stat-label">Lessons Learned</div></div>
+    </div>
+  </div>
+
+  <div id="products-tab" class="tab-content">
+    <h2>Products (四层结构)</h2>
+    <div id="products-list"></div>
+  </div>
+
+  <div id="projects-tab" class="tab-content">
+    <h2>Projects (传统单项目)</h2>
+    <div class="grid" id="projects-grid"></div>
+  </div>
+
+  <div id="agents-tab" class="tab-content">
+    <h2>Agent Status</h2>
+    <div class="card">
+      <table id="agents-table">
+        <thead><tr><th>Agent</th><th>Project</th><th>Status</th><th>Last Run</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="logs-tab" class="tab-content">
+    <h2>Recent Logs</h2>
+    <div class="card" id="logs-card">
+      <div id="logs-list"><em>Loading...</em></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:3099';
+
+let currentTab = 'overview';
+let dashboardData = null;
+let productsData = [];
+
+function switchTab(tabName) {
+  currentTab = tabName;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+  document.getElementById(`${tabName}-tab`).classList.add('active');
+}
+
+async function loadAll() {
+  document.getElementById('status-msg').textContent = 'Loading...';
+  try {
+    const [dashRes, productsRes] = await Promise.all([
+      fetch(`${API}/api/dashboard`),
+      fetch(`${API}/api/products`)
+    ]);
+    dashboardData = await dashRes.json();
+    productsData = (await productsRes.json()).products || [];
+
+    renderOverview();
+    renderProducts();
+    renderProjects();
+    renderAgents();
+    renderLogs();
+
+    document.getElementById('status-msg').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    document.getElementById('status-msg').textContent = `Error: ${e.message}. Is control-plane running?`;
+  }
+}
+
+function renderOverview() {
+  document.getElementById('total-products').textContent = productsData.length;
+  document.getElementById('total-projects').textContent = dashboardData.projects ? dashboardData.projects.length : 0;
+  document.getElementById('active-agents').textContent = dashboardData.summary?.activeAgents || 0;
+  document.getElementById('lessons-count').textContent = dashboardData.summary?.lessonsCount || 0;
+}
+
+async function renderProducts() {
+  const container = document.getElementById('products-list');
+  if (!productsData || productsData.length === 0) {
+    container.innerHTML = '<div class="empty">No products yet</div>';
+    return;
+  }
+
+  let html = '';
+  for (const product of productsData) {
+    const milestonesRes = await fetch(`${API}/api/products/${product.id}/milestones`);
+    const { milestones } = await milestonesRes.json();
+
+    html += `
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>${product.name} <span class="badge badge-${product.status}">${product.status}</span></h3>
+        <div style="font-size: 12px; color: #8899a6; margin-bottom: 12px;">
+          Client: ${product.clientName || 'N/A'} | Created: ${new Date(product.createdAt).toLocaleDateString()}
+        </div>
+        ${milestones.length > 0 ? `
+          <div class="hierarchy">
+            ${milestones.map(m => `
+              <div class="hierarchy-item">
+                <strong>Milestone:</strong> ${m.name} <span class="badge badge-${m.status}">${m.status}</span>
+                ${m.targetDate ? `<span style="font-size: 11px; color: #8899a6;"> | Target: ${m.targetDate}</span>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div style="color: #8899a6; font-size: 12px; margin-top: 8px;">No milestones</div>'}
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+}
+
+function renderProjects() {
+  const grid = document.getElementById('projects-grid');
+  const projects = dashboardData.projects || [];
+  if (projects.length === 0) {
+    grid.innerHTML = '<div class="card"><div class="empty">No active projects</div></div>';
+    return;
+  }
+  grid.innerHTML = projects.map(p => `
+    <div class="card">
+      <h3>${p.name}</h3>
+      <div style="margin: 8px 0;">
+        Phase: <span class="badge badge-progress">${p.phase}</span>
+        ${p.complexity ? `Complexity: <span class="badge badge-pending">${p.complexity}</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderAgents() {
+  const tbody = document.querySelector('#agents-table tbody');
+  const projects = dashboardData.projects || [];
+  const rows = [];
+  projects.forEach(p => {
+    const agents = dashboardData.projects.find(proj => proj.name === p.name)?.agents || [];
+    Object.entries(agents).forEach(([name, info]) => {
+      rows.push(`<tr>
+        <td>${name}</td>
+        <td>${p.name}</td>
+        <td><span class="badge badge-${info.status === 'done' ? 'done' : info.status === 'in_progress' ? 'progress' : info.status === 'blocked' ? 'blocked' : 'pending'}">${info.status}</span></td>
+        <td style="font-size:12px;color:#8899a6">${info.lastRun ? new Date(info.lastRun).toLocaleString() : '-'}</td>
+      </tr>`);
+    });
+  });
+  tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4"><div class="empty">No agent activity</div></td></tr>';
+}
+
+function renderLogs() {
+  const list = document.getElementById('logs-list');
+  const logs = dashboardData.recentLogs || [];
+  if (logs.length === 0) {
+    list.innerHTML = '<div class="empty">No recent logs</div>';
+    return;
+  }
+  list.innerHTML = logs.slice(0, 20).map(l => `
+    <div class="log-entry">
+      <span class="log-time">${l.time}</span>
+      <span class="log-agent">[${l.agent}]</span>
+      <span class="${l.level === 'error' ? 'log-error' : ''}">${l.message}</span>
+    </div>
+  `).join('');
+}
+
+loadAll();
+setInterval(loadAll, 30000);
+</script>
+</body>
+</html>

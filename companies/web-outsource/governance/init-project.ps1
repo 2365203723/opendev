@@ -1,10 +1,10 @@
 #Requires -Version 5.1
-# init-project.ps1 — 项目初始化（无 Paperclip）
+# init-project.ps1 — 项目初始化
 #
 # 功能：
 #   1. 在 E:\projects\<name> 下建标准目录结构
 #   2. 从 H:\claude-assets\skeletons\<skeleton> 拷骨架（可选）
-#   3. 创建 .status.json（替代 Paperclip 工单）
+#   3. 创建 .status.json（项目状态机）
 #   4. 写项目级 CLAUDE.md 和占位 charter.md
 #
 # 用法：

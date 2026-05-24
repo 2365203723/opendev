@@ -1,16 +1,13 @@
 # web-outsource 系统文档
 
-> 版本 v2.0（2026-05-14）— 移除 Paperclip 后的精简版
-
-旧版 v1.0 文档（基于 Paperclip 工单系统）已归档到 `H:\claude-assets\_archive\docs-paperclip-era\`。
+> 版本 v2.0（2026-05-14）— 文件状态流转版
 
 ## 一、这是什么
 
 一家"跑在文件系统上的"虚拟外包公司。客户把原始材料放到 `E:\intake\<客户>\raw\`，11 个 Claude 子代理通过 `/intake` 和 `/go` 命令接力完成接单→设计→开发→质检→交付。
 
-**与旧版的区别**：
-- ❌ 旧版用 Paperclip API 创建 issue 流转任务（已弃用）
-- ✅ 新版用 `.status.json` + `doc\handoff\` 文件流转
+**任务流转方式**：
+- ✅ 使用 `.status.json` + `doc\handoff\` 文件流转
 
 ## 二、入口
 

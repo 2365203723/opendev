@@ -6,3 +6,18 @@
 *.key
 auth.json
 **/coverage/
+
+# 数据库文件
+control-plane/data/
+*.db
+*.db-shm
+*.db-wal
+
+# 密钥配置
+config/feishu-webhook.json
+**/feishu-webhook.json
+
+# 临时/工作目录
+.claude/worktrees/
+.playwright-mcp/
+.superpowers/

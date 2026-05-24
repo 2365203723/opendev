@@ -30,15 +30,63 @@ function openDatabase(databasePath) {
       UNIQUE(project_name, name)
     );
 
+    CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      client_name TEXT,
+      root_path TEXT,
+      status TEXT NOT NULL DEFAULT 'idea',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS milestones (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'planned',
+      gate_scope TEXT,
+      target_date TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS workstreams (
+      id TEXT PRIMARY KEY,
+      milestone_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'todo',
+      owner_role TEXT,
+      project_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE CASCADE,
+      FOREIGN KEY (project_name) REFERENCES projects(name) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      workstream_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'backlog',
+      agent_role TEXT,
+      priority TEXT,
+      acceptance_ref TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (workstream_id) REFERENCES workstreams(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS gates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_name TEXT NOT NULL,
-      name TEXT NOT NULL,
+      scope_type TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      gate_name TEXT NOT NULL,
       status TEXT NOT NULL,
       evidence_path TEXT,
       checked_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (project_name) REFERENCES projects(name) ON DELETE CASCADE,
-      UNIQUE(project_name, name)
+      UNIQUE(scope_type, scope_id, gate_name)
     );
 
     CREATE TABLE IF NOT EXISTS artifacts (
@@ -166,6 +214,61 @@ function openDatabase(databasePath) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Migrate gates table if needed
+  const needsMigration = db.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type='table' AND name='gates'
+  `).get();
+
+  if (needsMigration) {
+    const columns = db.prepare(`PRAGMA table_info(gates)`).all();
+    const hasOldSchema = columns.some(col => col.name === 'project_name');
+
+    if (hasOldSchema) {
+      console.log('[db] Migrating gates table to new schema...');
+
+      // Backup old data
+      const oldGates = db.prepare(`SELECT * FROM gates`).all();
+
+      // Drop old table
+      db.exec(`DROP TABLE gates`);
+
+      // Create new table
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS gates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          scope_type TEXT NOT NULL,
+          scope_id TEXT NOT NULL,
+          gate_name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          evidence_path TEXT,
+          checked_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(scope_type, scope_id, gate_name)
+        )
+      `);
+
+      // Migrate data
+      const insertStmt = db.prepare(`
+        INSERT INTO gates (scope_type, scope_id, gate_name, status, evidence_path, checked_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const gate of oldGates) {
+        insertStmt.run(
+          'project',
+          gate.project_name,
+          gate.name,
+          gate.status,
+          gate.evidence_path,
+          gate.checked_at
+        );
+      }
+
+      console.log(`[db] Migrated ${oldGates.length} gates to new schema`);
+    }
+  }
+
   return db;
 }
 

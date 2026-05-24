@@ -1,4 +1,4 @@
-# /resume — 从阻塞恢复项目
+# /recover — 从阻塞恢复项目
 
 接收项目名参数: `$ARGUMENTS`
 

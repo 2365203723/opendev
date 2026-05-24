@@ -1,7 +1,6 @@
 # SOP 标准操作流程
 
-> 版本 v2.0（2026-05-14）— 移除 Paperclip 后的精简版
-> 旧版 SOP（v1.x）在 `H:\claude-assets\_archive\governance-paperclip-era\SOP.md`
+> 版本 v2.0（2026-05-14）— 文件状态流转版
 
 ## 一、新订单接入
 

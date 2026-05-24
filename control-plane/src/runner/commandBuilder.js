@@ -103,9 +103,26 @@ JSON 结构：
   }
 }
 
-function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targetName, crId, patchPhase, projectName, memoryPhase, ...rest }) {
+function buildScopeEnv({ scopeType, scopeId, productId, milestoneId, workstreamId, taskId, agentRole, projectName, acceptanceRef } = {}) {
+  if (!scopeType && !scopeId) return undefined;
+
+  const env = {};
+  if (scopeType) env.PAPERCLIP_SCOPE_TYPE = scopeType;
+  if (scopeId) env.PAPERCLIP_SCOPE_ID = scopeId;
+  if (productId) env.PAPERCLIP_PRODUCT_ID = productId;
+  if (milestoneId) env.PAPERCLIP_MILESTONE_ID = milestoneId;
+  if (workstreamId) env.PAPERCLIP_WORKSTREAM_ID = workstreamId;
+  if (taskId) env.PAPERCLIP_TASK_ID = taskId;
+  if (agentRole) env.PAPERCLIP_AGENT_ROLE = agentRole;
+  if (projectName) env.PAPERCLIP_PROJECT_NAME = projectName;
+  if (acceptanceRef) env.PAPERCLIP_ACCEPTANCE_REF = acceptanceRef;
+
+  return Object.keys(env).length > 0 ? env : undefined;
+}
+
+function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targetName, crId, patchPhase, projectName, memoryPhase, scopeType, scopeId, productId, milestoneId, workstreamId, taskId, agentRole, acceptanceRef, ...rest }) {
   if (!COMMANDS.has(commandType)) {
-    throw new Error('commandType must be intake, go, or recover');
+    throw new Error(`commandType must be one of: ${[...COMMANDS].join(', ')}`);
   }
 
   if (commandType === 'patch') {
@@ -121,7 +138,7 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
   }
 
   if (commandType === 'memory') {
-    const prompt = buildMemoryPrompt({ claudeAssetsDir, memoryPhase, ...rest });
+    const prompt = buildMemoryPrompt({ claudeAssetsDir, memoryPhase, scopeType, scopeId, ...rest });
     return {
       file: claudeCommand,
       args: ['-p', prompt, '--output-format', 'json'],
@@ -133,11 +150,14 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
     throw new Error('targetName must contain only letters, numbers, underscore, dash, and CJK characters');
   }
 
-  const prompt = buildPrompt({ claudeAssetsDir, commandType, targetName });
+  const basePrompt = rest.prompt || buildPrompt({ claudeAssetsDir, commandType, targetName });
+  const env = buildScopeEnv({ scopeType, scopeId, productId, milestoneId, workstreamId, taskId, agentRole, projectName, acceptanceRef });
+
   return {
     file: claudeCommand,
-    args: ['-p', prompt, '--output-format', 'json'],
-    prompt
+    args: ['-p', basePrompt, '--output-format', 'json'],
+    prompt: basePrompt,
+    ...(env ? { env } : {})
   };
 }
 

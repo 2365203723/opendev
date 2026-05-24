@@ -23,7 +23,7 @@ describe('buildClaudeCommand', () => {
 
   it('allows only intake, go, and recover command types', () => {
     expect(() => buildClaudeCommand({ claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', commandType: 'delete', targetName: 'demo' }))
-      .toThrow('commandType must be intake, go, or recover');
+      .toThrow('commandType must be one of:');
   });
 
   it('rejects unsafe target names', () => {
@@ -228,5 +228,59 @@ describe('buildClaudeCommand', () => {
       scopeType: 'project',
       scopeId: 'demo'
     })).toThrow('unknown memoryPhase: unknown-phase');
+  });
+});
+
+describe('buildClaudeCommand scope env injection', () => {
+  it('injects PAPERCLIP_SCOPE_TYPE and PAPERCLIP_SCOPE_ID for project scope', () => {
+    const result = buildClaudeCommand({
+      claudeCommand: 'claude',
+      claudeAssetsDir: 'H:/claude-assets',
+      commandType: 'go',
+      targetName: 'demo',
+      scopeType: 'project',
+      scopeId: 'demo',
+      projectName: 'demo'
+    });
+
+    expect(result.env).toBeDefined();
+    expect(result.env.PAPERCLIP_SCOPE_TYPE).toBe('project');
+    expect(result.env.PAPERCLIP_SCOPE_ID).toBe('demo');
+    expect(result.env.PAPERCLIP_PROJECT_NAME).toBe('demo');
+  });
+
+  it('injects workstream env for workstream scope', () => {
+    const result = buildClaudeCommand({
+      claudeCommand: 'claude',
+      claudeAssetsDir: 'H:/claude-assets',
+      commandType: 'go',
+      targetName: 'demo',
+      scopeType: 'workstream',
+      scopeId: 'ws-001',
+      workstreamId: 'ws-001',
+      milestoneId: 'ms-001',
+      productId: 'prod-001',
+      agentRole: 'backend',
+      projectName: 'demo'
+    });
+
+    expect(result.env.PAPERCLIP_SCOPE_TYPE).toBe('workstream');
+    expect(result.env.PAPERCLIP_SCOPE_ID).toBe('ws-001');
+    expect(result.env.PAPERCLIP_WORKSTREAM_ID).toBe('ws-001');
+    expect(result.env.PAPERCLIP_MILESTONE_ID).toBe('ms-001');
+    expect(result.env.PAPERCLIP_PRODUCT_ID).toBe('prod-001');
+    expect(result.env.PAPERCLIP_AGENT_ROLE).toBe('backend');
+    expect(result.env.PAPERCLIP_PROJECT_NAME).toBe('demo');
+  });
+
+  it('returns no env when no scope fields are provided', () => {
+    const result = buildClaudeCommand({
+      claudeCommand: 'claude',
+      claudeAssetsDir: 'H:/claude-assets',
+      commandType: 'go',
+      targetName: 'demo'
+    });
+
+    expect(result.env).toBeUndefined();
   });
 });

@@ -227,7 +227,7 @@ describe('dashboard APIs', () => {
       .send({ commandType: 'go', targetName: '  demo-项目_1  ' });
 
     expect(response.status).toBe(202);
-    expect(response.body).toEqual(run);
+    expect(response.body).toMatchObject({ status: 'queued', commandType: 'go', targetName: 'demo-项目_1' });
     expect(runner.start).toHaveBeenCalledWith({ commandType: 'go', targetName: 'demo-项目_1' });
   });
 });

@@ -21,6 +21,33 @@ const elements = {
   targetName: document.getElementById('target-name')
 };
 
+const navItems = document.querySelectorAll('.nav-item');
+const views = document.querySelectorAll('.view');
+
+const productElements = {
+  tree: document.getElementById('products-tree'),
+  newProductBtn: document.getElementById('new-product-btn'),
+  productDialog: document.getElementById('product-dialog'),
+  productForm: document.getElementById('product-form'),
+  productName: document.getElementById('product-name'),
+  milestoneDialog: document.getElementById('milestone-dialog'),
+  milestoneForm: document.getElementById('milestone-form'),
+  milestoneProductId: document.getElementById('milestone-product-id'),
+  milestoneName: document.getElementById('milestone-name'),
+  milestoneTargetDate: document.getElementById('milestone-target-date'),
+  workstreamDialog: document.getElementById('workstream-dialog'),
+  workstreamForm: document.getElementById('workstream-form'),
+  workstreamMilestoneId: document.getElementById('workstream-milestone-id'),
+  workstreamName: document.getElementById('workstream-name'),
+  workstreamProjectName: document.getElementById('workstream-project-name'),
+  taskDialog: document.getElementById('task-dialog'),
+  taskForm: document.getElementById('task-form'),
+  taskWorkstreamId: document.getElementById('task-workstream-id'),
+  taskTitle: document.getElementById('task-title'),
+  taskAgentRole: document.getElementById('task-agent-role'),
+  taskAcceptance: document.getElementById('task-acceptance')
+};
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -42,7 +69,7 @@ function setLoading(isLoading) {
 }
 
 function setStatus(message) {
-  elements.statusMessage.textContent = message;
+  if (elements.statusMessage) elements.statusMessage.textContent = message;
 }
 
 function emptyMessage(message) {
@@ -57,6 +84,45 @@ function createBadge(text, status) {
   badge.className = status ? `badge ${status}` : 'badge';
   badge.textContent = text;
   return badge;
+}
+
+function switchView(viewName) {
+  navItems.forEach(item => item.classList.toggle('active', item.dataset.view === viewName));
+  views.forEach(view => {
+    const isActive = view.id === `view-${viewName}`;
+    view.classList.toggle('active', isActive);
+    view.hidden = !isActive;
+  });
+
+  if (viewName === 'dashboard') loadDashboard();
+  if (viewName === 'products') loadProducts();
+  if (viewName === 'iterations') loadCrs();
+  if (viewName === 'memory') loadMemory();
+}
+
+function makeButton(label, className, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className || 'button';
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function openDialog(dialog) {
+  if (typeof dialog.showModal === 'function') {
+    dialog.showModal();
+    return;
+  }
+  dialog.hidden = false;
+}
+
+function closeDialog(dialog) {
+  if (typeof dialog.close === 'function') {
+    dialog.close();
+    return;
+  }
+  dialog.hidden = true;
 }
 
 function renderSummary(summary = {}) {
@@ -197,6 +263,183 @@ function renderDashboard(dashboard) {
   renderBlockers(dashboard.blockers, dashboard.failingGates);
   renderRuns(dashboard.runs);
   renderLogs(dashboard);
+}
+
+async function loadProducts() {
+  try {
+    const data = await fetchJson('/api/products');
+    const products = data.products || [];
+    productElements.tree.replaceChildren();
+
+    if (products.length === 0) {
+      productElements.tree.appendChild(emptyMessage('暂无产品。'));
+      return;
+    }
+
+    for (const product of products) {
+      const tree = await fetchJson(`/api/products/${product.id}/tree`);
+      productElements.tree.appendChild(renderProductNode(tree.product));
+    }
+  } catch (error) {
+    productElements.tree.replaceChildren(emptyMessage(error.message));
+  }
+}
+
+function renderProductNode(product) {
+  const node = document.createElement('article');
+  node.className = 'tree-node product-node';
+
+  const header = document.createElement('div');
+  header.className = 'tree-node-header';
+  const title = document.createElement('strong');
+  title.textContent = product.name;
+  const actions = document.createElement('div');
+  actions.className = 'node-actions';
+  actions.append(
+    createBadge(product.status || 'idea'),
+    makeButton('新建 Milestone', 'button-small', () => {
+      productElements.milestoneProductId.value = product.id;
+      openDialog(productElements.milestoneDialog);
+    })
+  );
+  header.append(title, actions);
+
+  const children = document.createElement('div');
+  children.className = 'tree-children';
+  const milestones = product.milestones || [];
+  if (milestones.length === 0) {
+    children.appendChild(emptyMessage('暂无 Milestone。'));
+  } else {
+    milestones.forEach(milestone => children.appendChild(renderMilestoneNode(milestone)));
+  }
+
+  node.append(header, children);
+  return node;
+}
+
+function renderMilestoneNode(milestone) {
+  const node = document.createElement('section');
+  node.className = 'tree-node milestone-node';
+  const header = document.createElement('div');
+  header.className = 'tree-node-header';
+  const title = document.createElement('strong');
+  title.textContent = milestone.name;
+  const actions = document.createElement('div');
+  actions.className = 'node-actions';
+  actions.append(
+    createBadge(milestone.status || 'planned'),
+    makeButton('新建 Workstream', 'button-small', () => {
+      productElements.workstreamMilestoneId.value = milestone.id;
+      openDialog(productElements.workstreamDialog);
+    })
+  );
+  header.append(title, actions);
+
+  const children = document.createElement('div');
+  children.className = 'tree-children';
+  const workstreams = milestone.workstreams || [];
+  if (workstreams.length === 0) {
+    children.appendChild(emptyMessage('暂无 Workstream。'));
+  } else {
+    workstreams.forEach(workstream => children.appendChild(renderWorkstreamNode(workstream)));
+  }
+
+  node.append(header, children);
+  return node;
+}
+
+function renderWorkstreamNode(workstream) {
+  const node = document.createElement('section');
+  node.className = 'tree-node workstream-node';
+  const header = document.createElement('div');
+  header.className = 'tree-node-header';
+  const title = document.createElement('strong');
+  title.textContent = workstream.projectName ? `${workstream.name} · ${workstream.projectName}` : workstream.name;
+  const actions = document.createElement('div');
+  actions.className = 'node-actions';
+  actions.append(
+    createBadge(workstream.status || 'todo'),
+    makeButton('新建 Task', 'button-small', () => {
+      productElements.taskWorkstreamId.value = workstream.id;
+      openDialog(productElements.taskDialog);
+    })
+  );
+  header.append(title, actions);
+
+  const children = document.createElement('div');
+  children.className = 'tree-children task-list';
+  const tasks = workstream.tasks || [];
+  if (tasks.length === 0) {
+    children.appendChild(emptyMessage('暂无 Task。'));
+  } else {
+    tasks.forEach(task => children.appendChild(renderTaskNode(task)));
+  }
+
+  node.append(header, children);
+  return node;
+}
+
+function renderTaskNode(task) {
+  const row = document.createElement('div');
+  row.className = 'task-row';
+  const title = document.createElement('span');
+  title.textContent = task.title;
+  row.append(title, createBadge(task.status || 'backlog'));
+  return row;
+}
+
+async function submitProduct(event) {
+  event.preventDefault();
+  await fetchJson('/api/products', {
+    method: 'POST',
+    body: JSON.stringify({ name: productElements.productName.value.trim() })
+  });
+  productElements.productForm.reset();
+  closeDialog(productElements.productDialog);
+  await loadProducts();
+}
+
+async function submitMilestone(event) {
+  event.preventDefault();
+  await fetchJson(`/api/products/${productElements.milestoneProductId.value}/milestones`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: productElements.milestoneName.value.trim(),
+      targetDate: productElements.milestoneTargetDate.value || null
+    })
+  });
+  productElements.milestoneForm.reset();
+  closeDialog(productElements.milestoneDialog);
+  await loadProducts();
+}
+
+async function submitWorkstream(event) {
+  event.preventDefault();
+  await fetchJson(`/api/milestones/${productElements.workstreamMilestoneId.value}/workstreams`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: productElements.workstreamName.value.trim(),
+      projectName: productElements.workstreamProjectName.value.trim() || null
+    })
+  });
+  productElements.workstreamForm.reset();
+  closeDialog(productElements.workstreamDialog);
+  await loadProducts();
+}
+
+async function submitTask(event) {
+  event.preventDefault();
+  await fetchJson(`/api/workstreams/${productElements.taskWorkstreamId.value}/tasks`, {
+    method: 'POST',
+    body: JSON.stringify({
+      title: productElements.taskTitle.value.trim(),
+      agentRole: productElements.taskAgentRole.value,
+      acceptanceRef: productElements.taskAcceptance.value.trim() || null
+    })
+  });
+  productElements.taskForm.reset();
+  closeDialog(productElements.taskDialog);
+  await loadProducts();
 }
 
 async function loadDashboard() {
@@ -586,6 +829,28 @@ async function triggerMemoryCompress() {
     setStatus(err.message);
   }
 }
+
+navItems.forEach(item => {
+  item.addEventListener('click', () => switchView(item.dataset.view));
+});
+
+document.querySelectorAll('[data-close-dialog]').forEach(btn => {
+  btn.addEventListener('click', () => closeDialog(btn.closest('dialog')));
+});
+
+productElements.newProductBtn.addEventListener('click', () => openDialog(productElements.productDialog));
+productElements.productForm.addEventListener('submit', event => {
+  submitProduct(event).catch(error => setStatus(error.message));
+});
+productElements.milestoneForm.addEventListener('submit', event => {
+  submitMilestone(event).catch(error => setStatus(error.message));
+});
+productElements.workstreamForm.addEventListener('submit', event => {
+  submitWorkstream(event).catch(error => setStatus(error.message));
+});
+productElements.taskForm.addEventListener('submit', event => {
+  submitTask(event).catch(error => setStatus(error.message));
+});
 
 memoryElements.eventToggle.addEventListener('click', () => {
   memoryElements.eventForm.hidden = !memoryElements.eventForm.hidden;

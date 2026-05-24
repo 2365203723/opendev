@@ -10,7 +10,7 @@
 | `xss-double-defense.js` | 服务端 escape + 前端 textContent 双层防御 | personal-blog MVP |
 | `health-endpoint.js` | DevOps Gate 5 必需的 /api/health | skeleton v1 |
 | `sqlite-seed-on-startup.js` | 启动 seed 不覆盖运行时字段 | personal-blog MVP |
-| `curl-self-check.sh` | Dev/Reviewer 统一冒烟脚本 | personal-blog MVP |
+| `adversarial-inputs.js` | QA 对抗性测试数据集（URL/注入/边界/并发） | url-shortener 事后复盘 |
 
 ## 使用约定
 

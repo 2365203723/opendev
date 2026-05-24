@@ -33,12 +33,16 @@ describe('SQLite store', () => {
       'episodes',
       'facts',
       'gates',
+      'milestones',
+      'products',
       'projects',
       'raw_events',
       'regression_results',
       'retrieval_packs',
       'runs',
-      'sqlite_sequence'
+      'sqlite_sequence',
+      'tasks',
+      'workstreams'
     ]);
   });
 

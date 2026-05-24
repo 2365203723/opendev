@@ -11,17 +11,30 @@ function createStore(db) {
       reopen_count = excluded.reopen_count,
       updated_at = excluded.updated_at
   `);
+  const gateColumns = db.prepare('PRAGMA table_info(gates)').all().map(column => column.name);
+  const hasScopedGates = gateColumns.includes('scope_type');
   const deleteAgents = db.prepare('DELETE FROM agents WHERE project_name = ?');
-  const deleteGates = db.prepare('DELETE FROM gates WHERE project_name = ?');
+  const deleteGates = hasScopedGates
+    ? db.prepare("DELETE FROM gates WHERE scope_type = 'project' AND scope_id = ?")
+    : db.prepare('DELETE FROM gates WHERE project_name = ?');
   const deleteArtifacts = db.prepare('DELETE FROM artifacts WHERE project_name = ?');
   const insertAgent = db.prepare(`
     INSERT INTO agents (project_name, name, status, last_run, block_reason)
     VALUES (@projectName, @name, @status, @lastRun, @blockReason)
   `);
-  const insertGate = db.prepare(`
-    INSERT INTO gates (project_name, name, status, evidence_path)
-    VALUES (@projectName, @name, @status, @evidencePath)
-  `);
+  const insertGate = hasScopedGates
+    ? db.prepare(`
+      INSERT INTO gates (scope_type, scope_id, gate_name, status, evidence_path, checked_at)
+      VALUES ('project', @projectName, @name, @status, @evidencePath, datetime('now'))
+      ON CONFLICT(scope_type, scope_id, gate_name) DO UPDATE SET
+        status = excluded.status,
+        evidence_path = excluded.evidence_path,
+        checked_at = excluded.checked_at
+    `)
+    : db.prepare(`
+      INSERT INTO gates (project_name, name, status, evidence_path)
+      VALUES (@projectName, @name, @status, @evidencePath)
+    `);
   const insertArtifact = db.prepare(`
     INSERT INTO artifacts (project_name, type, path, hash, mtime_ms, summary)
     VALUES (@projectName, @type, @path, @hash, @mtimeMs, @summary)
@@ -88,6 +101,66 @@ function createStore(db) {
       (@crId, @runId, @status, @totalTests, @passedTests, @failedTests, @reportPath, @createdAt)
   `);
 
+  const selectScopedGates = hasScopedGates ? db.prepare(`
+    SELECT id, scope_type AS scopeType, scope_id AS scopeId, gate_name AS gateName,
+           status, evidence_path AS evidencePath, checked_at AS checkedAt
+    FROM gates
+    WHERE scope_type = ? AND scope_id = ?
+    ORDER BY gate_name ASC
+  `) : null;
+
+  function listScopedGates(scopeType, scopeId) {
+    return selectScopedGates ? selectScopedGates.all(scopeType, scopeId) : [];
+  }
+
+  function getProductTree(productId) {
+    const product = db.prepare(`
+      SELECT id, name, client_name AS clientName, root_path AS rootPath, status,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM products
+      WHERE id = ?
+    `).get(productId) || null;
+    if (!product) return null;
+
+    const milestones = db.prepare(`
+      SELECT id, product_id AS productId, name, status, gate_scope AS gateScope,
+             target_date AS targetDate, created_at AS createdAt, updated_at AS updatedAt
+      FROM milestones
+      WHERE product_id = ?
+      ORDER BY created_at ASC
+    `).all(product.id).map(milestone => {
+      const workstreams = db.prepare(`
+        SELECT id, milestone_id AS milestoneId, name, status, owner_role AS ownerRole,
+               project_name AS projectName, created_at AS createdAt, updated_at AS updatedAt
+        FROM workstreams
+        WHERE milestone_id = ?
+        ORDER BY created_at ASC
+      `).all(milestone.id).map(workstream => ({
+        ...workstream,
+        gates: listScopedGates('workstream', workstream.id),
+        tasks: db.prepare(`
+          SELECT id, workstream_id AS workstreamId, title, status, agent_role AS agentRole,
+                 priority, acceptance_ref AS acceptanceRef, created_at AS createdAt, updated_at AS updatedAt
+          FROM tasks
+          WHERE workstream_id = ?
+          ORDER BY created_at ASC
+        `).all(workstream.id)
+      }));
+
+      return {
+        ...milestone,
+        gates: listScopedGates('milestone', milestone.id),
+        workstreams
+      };
+    });
+
+    return {
+      ...product,
+      gates: listScopedGates('product', product.id),
+      milestones
+    };
+  }
+
   return {
     replaceProjectIndex: payload => replaceProjectIndexTxn(payload),
     replaceProjectIndexes: projectIndexes => replaceProjectIndexesTxn(projectIndexes),
@@ -107,12 +180,20 @@ function createStore(db) {
       WHERE project_name = ?
       ORDER BY name ASC
     `).all(projectName),
-    listGates: projectName => db.prepare(`
-      SELECT project_name AS projectName, name, status, evidence_path AS evidencePath, checked_at AS checkedAt
-      FROM gates
-      WHERE project_name = ?
-      ORDER BY name ASC
-    `).all(projectName),
+    listGates: projectName => {
+      const sql = hasScopedGates ? `
+        SELECT scope_id AS projectName, gate_name AS name, status, evidence_path AS evidencePath, checked_at AS checkedAt
+        FROM gates
+        WHERE scope_type = 'project' AND scope_id = ?
+        ORDER BY gate_name ASC
+      ` : `
+        SELECT project_name AS projectName, name, status, evidence_path AS evidencePath, checked_at AS checkedAt
+        FROM gates
+        WHERE project_name = ?
+        ORDER BY name ASC
+      `;
+      return db.prepare(sql).all(projectName);
+    },
     listArtifacts: projectName => db.prepare(`
       SELECT project_name AS projectName, type, path, hash, mtime_ms AS mtimeMs, summary, indexed_at AS indexedAt
       FROM artifacts
@@ -336,7 +417,144 @@ function createStore(db) {
       WHERE scope_type = ? AND scope_id = ?
       ORDER BY generated_at DESC
       LIMIT ?
-    `).all(scopeType, scopeId, limit)
+    `).all(scopeType, scopeId, limit),
+
+    // ─── Phase 4: 四层项目结构 ─────────────────────────────────────────────────
+    createProduct: product => db.prepare(`
+      INSERT INTO products (id, name, client_name, root_path, status, created_at, updated_at)
+      VALUES (@id, @name, @clientName, @rootPath, @status, @createdAt, @updatedAt)
+    `).run(product),
+    getProduct: id => db.prepare(`
+      SELECT id, name, client_name AS clientName, root_path AS rootPath, status,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM products
+      WHERE id = ?
+    `).get(id) || null,
+    listProducts: () => db.prepare(`
+      SELECT id, name, client_name AS clientName, root_path AS rootPath, status,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM products
+      ORDER BY created_at DESC
+    `).all(),
+    updateProduct: (id, updates) => {
+      const fields = [];
+      const params = [];
+      if (updates.name !== undefined) { fields.push('name = ?'); params.push(updates.name); }
+      if (updates.clientName !== undefined) { fields.push('client_name = ?'); params.push(updates.clientName); }
+      if (updates.rootPath !== undefined) { fields.push('root_path = ?'); params.push(updates.rootPath); }
+      if (updates.status !== undefined) { fields.push('status = ?'); params.push(updates.status); }
+      fields.push('updated_at = ?');
+      params.push(new Date().toISOString());
+      params.push(id);
+      db.prepare(`UPDATE products SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    },
+    deleteProduct: id => db.prepare('DELETE FROM products WHERE id = ?').run(id),
+
+    createMilestone: milestone => db.prepare(`
+      INSERT INTO milestones (id, product_id, name, status, gate_scope, target_date, created_at, updated_at)
+      VALUES (@id, @productId, @name, @status, @gateScope, @targetDate, @createdAt, @updatedAt)
+    `).run(milestone),
+    getMilestone: id => db.prepare(`
+      SELECT id, product_id AS productId, name, status, gate_scope AS gateScope,
+             target_date AS targetDate, created_at AS createdAt, updated_at AS updatedAt
+      FROM milestones
+      WHERE id = ?
+    `).get(id) || null,
+    listMilestones: productId => db.prepare(`
+      SELECT id, product_id AS productId, name, status, gate_scope AS gateScope,
+             target_date AS targetDate, created_at AS createdAt, updated_at AS updatedAt
+      FROM milestones
+      WHERE product_id = ?
+      ORDER BY created_at ASC
+    `).all(productId),
+    updateMilestone: (id, updates) => {
+      const fields = [];
+      const params = [];
+      if (updates.name !== undefined) { fields.push('name = ?'); params.push(updates.name); }
+      if (updates.status !== undefined) { fields.push('status = ?'); params.push(updates.status); }
+      if (updates.gateScope !== undefined) { fields.push('gate_scope = ?'); params.push(updates.gateScope); }
+      if (updates.targetDate !== undefined) { fields.push('target_date = ?'); params.push(updates.targetDate); }
+      fields.push('updated_at = ?');
+      params.push(new Date().toISOString());
+      params.push(id);
+      db.prepare(`UPDATE milestones SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    },
+    deleteMilestone: id => db.prepare('DELETE FROM milestones WHERE id = ?').run(id),
+
+    createWorkstream: workstream => db.prepare(`
+      INSERT INTO workstreams (id, milestone_id, name, status, owner_role, project_name, created_at, updated_at)
+      VALUES (@id, @milestoneId, @name, @status, @ownerRole, @projectName, @createdAt, @updatedAt)
+    `).run(workstream),
+    getWorkstream: id => db.prepare(`
+      SELECT id, milestone_id AS milestoneId, name, status, owner_role AS ownerRole,
+             project_name AS projectName, created_at AS createdAt, updated_at AS updatedAt
+      FROM workstreams
+      WHERE id = ?
+    `).get(id) || null,
+    listWorkstreams: milestoneId => db.prepare(`
+      SELECT id, milestone_id AS milestoneId, name, status, owner_role AS ownerRole,
+             project_name AS projectName, created_at AS createdAt, updated_at AS updatedAt
+      FROM workstreams
+      WHERE milestone_id = ?
+      ORDER BY created_at ASC
+    `).all(milestoneId),
+    updateWorkstream: (id, updates) => {
+      const fields = [];
+      const params = [];
+      if (updates.name !== undefined) { fields.push('name = ?'); params.push(updates.name); }
+      if (updates.status !== undefined) { fields.push('status = ?'); params.push(updates.status); }
+      if (updates.ownerRole !== undefined) { fields.push('owner_role = ?'); params.push(updates.ownerRole); }
+      if (updates.projectName !== undefined) { fields.push('project_name = ?'); params.push(updates.projectName); }
+      fields.push('updated_at = ?');
+      params.push(new Date().toISOString());
+      params.push(id);
+      db.prepare(`UPDATE workstreams SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    },
+    deleteWorkstream: id => db.prepare('DELETE FROM workstreams WHERE id = ?').run(id),
+
+    createTask: task => db.prepare(`
+      INSERT INTO tasks (id, workstream_id, title, status, agent_role, priority, acceptance_ref, created_at, updated_at)
+      VALUES (@id, @workstreamId, @title, @status, @agentRole, @priority, @acceptanceRef, @createdAt, @updatedAt)
+    `).run(task),
+    getTask: id => db.prepare(`
+      SELECT id, workstream_id AS workstreamId, title, status, agent_role AS agentRole,
+             priority, acceptance_ref AS acceptanceRef, created_at AS createdAt, updated_at AS updatedAt
+      FROM tasks
+      WHERE id = ?
+    `).get(id) || null,
+    listTasks: workstreamId => db.prepare(`
+      SELECT id, workstream_id AS workstreamId, title, status, agent_role AS agentRole,
+             priority, acceptance_ref AS acceptanceRef, created_at AS createdAt, updated_at AS updatedAt
+      FROM tasks
+      WHERE workstream_id = ?
+      ORDER BY created_at ASC
+    `).all(workstreamId),
+    updateTask: (id, updates) => {
+      const fields = [];
+      const params = [];
+      if (updates.title !== undefined) { fields.push('title = ?'); params.push(updates.title); }
+      if (updates.status !== undefined) { fields.push('status = ?'); params.push(updates.status); }
+      if (updates.agentRole !== undefined) { fields.push('agent_role = ?'); params.push(updates.agentRole); }
+      if (updates.priority !== undefined) { fields.push('priority = ?'); params.push(updates.priority); }
+      if (updates.acceptanceRef !== undefined) { fields.push('acceptance_ref = ?'); params.push(updates.acceptanceRef); }
+      fields.push('updated_at = ?');
+      params.push(new Date().toISOString());
+      params.push(id);
+      db.prepare(`UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    },
+    deleteTask: id => db.prepare('DELETE FROM tasks WHERE id = ?').run(id),
+    getProductTree,
+
+    // ─── Phase 4: 分层 Gate 查询 ───────────────────────────────────────────────
+    upsertGate: gate => db.prepare(`
+      INSERT INTO gates (scope_type, scope_id, gate_name, status, evidence_path, checked_at)
+      VALUES (@scopeType, @scopeId, @gateName, @status, @evidencePath, @checkedAt)
+      ON CONFLICT(scope_type, scope_id, gate_name) DO UPDATE SET
+        status = excluded.status,
+        evidence_path = excluded.evidence_path,
+        checked_at = excluded.checked_at
+    `).run(gate),
+    listGatesByScope: (scopeType, scopeId) => listScopedGates(scopeType, scopeId)
   };
 }
 

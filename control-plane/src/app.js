@@ -5,6 +5,7 @@ const { readRecentLogs } = require('./indexer/logReader');
 const { countLessonFiles } = require('./indexer/lessonReader');
 const { createStatusWatcher } = require('./indexer/statusWatcher');
 const { buildClaudeCommand } = require('./runner/commandBuilder');
+const { createConcurrencyControl } = require('./concurrencyControl');
 
 // ─── memory helpers ───────────────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ function collectDashboard(store, config) {
   );
   const failingGates = projectDetails.flatMap(item => item.gates
     .filter(gate => gate.status === 'fail' || gate.status === 'warning')
-    .map(gate => ({ projectName: item.project.name, gate: gate.name, status: gate.status, evidencePath: gate.evidencePath }))
+    .map(gate => ({ projectName: item.project.name, gate: gate.name || gate.gateName, status: gate.status, evidencePath: gate.evidencePath }))
   );
 
   return {
@@ -176,7 +177,7 @@ function validateRunPayload(body) {
     return { error: 'body must be a plain object' };
   }
 
-  const allowedFields = new Set(['commandType', 'targetName']);
+  const allowedFields = new Set(['commandType', 'targetName', 'scopeType', 'scopeId', 'projectPath', 'workstreamId', 'taskId', 'isReadOnly']);
   const unknownField = Object.keys(body).find(field => !allowedFields.has(field));
   if (unknownField) {
     return { error: `unknown field: ${unknownField}` };
@@ -195,12 +196,18 @@ function validateRunPayload(body) {
     return { error: 'invalid targetName' };
   }
 
-  return { payload: { commandType: body.commandType, targetName } };
+  const payload = { commandType: body.commandType, targetName };
+  ['scopeType', 'scopeId', 'projectPath', 'workstreamId', 'taskId'].forEach(field => {
+    if (body[field] !== undefined) payload[field] = body[field];
+  });
+  if (body.isReadOnly !== undefined) payload.isReadOnly = body.isReadOnly === true;
+  return { payload };
 }
 
 function createApp(dependencies) {
   const app = express();
   const { config, store, indexer, runner, watcherFactory } = dependencies;
+  const concurrency = dependencies.concurrency || createConcurrencyControl();
 
   // 启动文件系统 watcher（可通过 watcherFactory 注入 mock）
   const factory = watcherFactory !== undefined ? watcherFactory : createStatusWatcher;
@@ -294,15 +301,39 @@ function createApp(dependencies) {
     }
   });
 
+  app.get('/api/locks', (_req, res) => {
+    res.json(concurrency.getLockStatus());
+  });
+
   app.post('/api/runs', async (req, res, next) => {
     try {
-      if (!runner) {
-        res.status(503).json({ error: 'runner unavailable' });
-        return;
-      }
       const validation = validateRunPayload(req.body);
       if (validation.error) {
         res.status(400).json({ error: validation.error });
+        return;
+      }
+
+      const runPayload = { ...validation.payload };
+
+      const lockId = `run:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+      const scope = {
+        scopeType: runPayload.scopeType || 'project',
+        projectPath: runPayload.projectPath,
+        workstreamId: runPayload.workstreamId,
+        taskId: runPayload.taskId
+      };
+      const shouldLock = Boolean(scope.projectPath || scope.workstreamId);
+      if (shouldLock) {
+        const lock = concurrency.tryAcquire(lockId, scope, runPayload.isReadOnly === true);
+        if (!lock.success) {
+          res.status(409).json({ error: lock.reason });
+          return;
+        }
+      }
+
+      if (!runner) {
+        if (shouldLock) concurrency.release(lockId, scope);
+        res.status(503).json({ error: 'runner unavailable' });
         return;
       }
 
@@ -319,30 +350,39 @@ function createApp(dependencies) {
         }
       }
 
-      const runPayload = { ...validation.payload };
       if (packContext) {
         try {
           const command = buildClaudeCommand({
             claudeCommand: '',
             claudeAssetsDir: config.claudeAssetsDir || '',
-            commandType: validation.payload.commandType,
-            targetName: validation.payload.targetName
+            commandType: runPayload.commandType,
+            targetName: runPayload.targetName
           });
           runPayload.prompt = command.prompt + packContext;
         } catch { /* 静默失败，不注入 */ }
       }
 
-      const run = await runner.start(runPayload);
-      if (store) {
-        writeEvent(store, {
-          eventType: 'command_run',
-          scopeType: 'company',
-          scopeId: 'default',
-          payload: { runId: run.id, commandType: validation.payload.commandType, targetName: validation.payload.targetName, status: run.status, exitCode: run.exitCode },
-          source: 'control_plane'
-        });
-      }
-      res.status(202).json(run);
+      res.status(202).json({ status: 'queued', commandType: runPayload.commandType, targetName: runPayload.targetName });
+
+      setImmediate(async () => {
+        try {
+          const run = await runner.start(runPayload);
+          if (store) {
+            writeEvent(store, {
+              eventType: 'command_run',
+              scopeType: 'company',
+              scopeId: 'default',
+              payload: { runId: run.id, commandType: runPayload.commandType, targetName: runPayload.targetName, status: run.status, exitCode: run.exitCode },
+              source: 'control_plane'
+            });
+          }
+        } catch { /* runner errors are logged to run record */ }
+        finally {
+          if (shouldLock) {
+            concurrency.release(lockId, scope);
+          }
+        }
+      });
     } catch (error) {
       next(error);
     }
@@ -851,6 +891,342 @@ function createApp(dependencies) {
       const limit = req.query.limit !== undefined ? parseInt(req.query.limit, 10) : 10;
       const packs = store.listRetrievalPacks(scopeType, scopeId, limit);
       res.json({ packs });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ─── Phase 4: 四层项目结构 API ────────────────────────────────────────────────
+
+  app.get('/api/products', (_req, res, next) => {
+    try {
+      res.json({ products: store.listProducts() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/products', (req, res, next) => {
+    try {
+      const { name, clientName, rootPath } = req.body || {};
+      if (!name || typeof name !== 'string' || name.trim() === '') {
+        res.status(400).json({ error: 'name is required' });
+        return;
+      }
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const product = {
+        id,
+        name: name.trim(),
+        clientName: clientName || null,
+        rootPath: rootPath || null,
+        status: 'idea',
+        createdAt: now,
+        updatedAt: now
+      };
+      store.createProduct(product);
+      res.status(201).json(product);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/products/:id/tree', (req, res, next) => {
+    try {
+      const product = store.getProductTree(req.params.id);
+      if (!product) {
+        res.status(404).json({ error: 'product not found' });
+        return;
+      }
+      res.json({ product });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/products/:id', (req, res, next) => {
+    try {
+      const product = store.getProduct(req.params.id);
+      if (!product) {
+        res.status(404).json({ error: 'product not found' });
+        return;
+      }
+      const milestones = store.listMilestones(product.id);
+      res.json({ product, milestones });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/products/:id', (req, res, next) => {
+    try {
+      if (!store.getProduct(req.params.id)) {
+        res.status(404).json({ error: 'product not found' });
+        return;
+      }
+      store.updateProduct(req.params.id, req.body || {});
+      res.json({ product: store.getProduct(req.params.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/products/:id', (req, res, next) => {
+    try {
+      if (!store.getProduct(req.params.id)) {
+        res.status(404).json({ error: 'product not found' });
+        return;
+      }
+      store.deleteProduct(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/products/:productId/milestones', (req, res, next) => {
+    try {
+      const milestones = store.listMilestones(req.params.productId);
+      res.json({ milestones });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/products/:productId/milestones', (req, res, next) => {
+    try {
+      const { name, gateScope, targetDate } = req.body || {};
+      if (!name || typeof name !== 'string' || name.trim() === '') {
+        res.status(400).json({ error: 'name is required' });
+        return;
+      }
+      const product = store.getProduct(req.params.productId);
+      if (!product) {
+        res.status(404).json({ error: 'product not found' });
+        return;
+      }
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const milestone = {
+        id,
+        productId: req.params.productId,
+        name: name.trim(),
+        status: 'planned',
+        gateScope: gateScope || null,
+        targetDate: targetDate || null,
+        createdAt: now,
+        updatedAt: now
+      };
+      store.createMilestone(milestone);
+      res.status(201).json(milestone);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/milestones/:id', (req, res, next) => {
+    try {
+      const milestone = store.getMilestone(req.params.id);
+      if (!milestone) {
+        res.status(404).json({ error: 'milestone not found' });
+        return;
+      }
+      const { status } = req.body || {};
+      if (status === 'released' && store.listWorkstreams(req.params.id).some(workstream => workstream.status === 'blocked')) {
+        res.status(400).json({ error: 'cannot release milestone with blocked workstreams' });
+        return;
+      }
+      store.updateMilestone(req.params.id, req.body || {});
+      res.json({ milestone: store.getMilestone(req.params.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/milestones/:id', (req, res, next) => {
+    try {
+      if (!store.getMilestone(req.params.id)) {
+        res.status(404).json({ error: 'milestone not found' });
+        return;
+      }
+      store.deleteMilestone(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/milestones/:milestoneId/workstreams', (req, res, next) => {
+    try {
+      const workstreams = store.listWorkstreams(req.params.milestoneId);
+      res.json({ workstreams });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/milestones/:milestoneId/workstreams', (req, res, next) => {
+    try {
+      const { name, ownerRole, projectName, status } = req.body || {};
+      if (!name || typeof name !== 'string' || name.trim() === '') {
+        res.status(400).json({ error: 'name is required' });
+        return;
+      }
+      const milestone = store.getMilestone(req.params.milestoneId);
+      if (!milestone) {
+        res.status(404).json({ error: 'milestone not found' });
+        return;
+      }
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const workstream = {
+        id,
+        milestoneId: req.params.milestoneId,
+        name: name.trim(),
+        status: status || 'todo',
+        ownerRole: ownerRole || null,
+        projectName: projectName || null,
+        createdAt: now,
+        updatedAt: now
+      };
+      store.createWorkstream(workstream);
+      res.status(201).json(workstream);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/workstreams/:id', (req, res, next) => {
+    try {
+      if (!store.getWorkstream(req.params.id)) {
+        res.status(404).json({ error: 'workstream not found' });
+        return;
+      }
+      store.updateWorkstream(req.params.id, req.body || {});
+      res.json({ workstream: store.getWorkstream(req.params.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/workstreams/:id', (req, res, next) => {
+    try {
+      if (!store.getWorkstream(req.params.id)) {
+        res.status(404).json({ error: 'workstream not found' });
+        return;
+      }
+      store.deleteWorkstream(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/workstreams/:workstreamId/tasks', (req, res, next) => {
+    try {
+      const tasks = store.listTasks(req.params.workstreamId);
+      res.json({ tasks });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/workstreams/:workstreamId/tasks', (req, res, next) => {
+    try {
+      const { title, agentRole, priority, acceptanceRef, status } = req.body || {};
+      if (!title || typeof title !== 'string' || title.trim() === '') {
+        res.status(400).json({ error: 'title is required' });
+        return;
+      }
+      const workstream = store.getWorkstream(req.params.workstreamId);
+      if (!workstream) {
+        res.status(404).json({ error: 'workstream not found' });
+        return;
+      }
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const task = {
+        id,
+        workstreamId: req.params.workstreamId,
+        title: title.trim(),
+        status: status || 'backlog',
+        agentRole: agentRole || null,
+        priority: priority || null,
+        acceptanceRef: acceptanceRef || null,
+        createdAt: now,
+        updatedAt: now
+      };
+      store.createTask(task);
+      res.status(201).json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/tasks/:id', (req, res, next) => {
+    try {
+      if (!store.getTask(req.params.id)) {
+        res.status(404).json({ error: 'task not found' });
+        return;
+      }
+      store.updateTask(req.params.id, req.body || {});
+      res.json({ task: store.getTask(req.params.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/tasks/:id', (req, res, next) => {
+    try {
+      if (!store.getTask(req.params.id)) {
+        res.status(404).json({ error: 'task not found' });
+        return;
+      }
+      store.deleteTask(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/gates', (req, res, next) => {
+    try {
+      const { scopeType, scopeId, gateName, status, evidencePath } = req.body || {};
+      if (!scopeType || !scopeId || !gateName || !status) {
+        res.status(400).json({ error: 'scopeType, scopeId, gateName, and status are required' });
+        return;
+      }
+      store.upsertGate({
+        scopeType,
+        scopeId,
+        gateName,
+        status,
+        evidencePath: evidencePath || null,
+        checkedAt: new Date().toISOString()
+      });
+      res.status(201).json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/gates', (req, res, next) => {
+    try {
+      const { scopeType, scopeId } = req.query;
+      if (!scopeType || !scopeId) {
+        res.status(400).json({ error: 'scopeType and scopeId are required' });
+        return;
+      }
+      res.json({ gates: store.listGatesByScope(scopeType, scopeId) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/gates/:scopeType/:scopeId', (req, res, next) => {
+    try {
+      const gates = store.listGatesByScope(req.params.scopeType, req.params.scopeId);
+      res.json({ gates });
     } catch (error) {
       next(error);
     }

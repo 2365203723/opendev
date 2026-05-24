@@ -8,165 +8,336 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main class="layout">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">Local Control Plane</p>
-        <h1>一人开发公司 OS</h1>
-        <p class="subtitle">文件系统是真相源，SQLite 是可重建索引，Claude Code 是执行引擎。</p>
-      </div>
-      <div class="actions">
-        <button id="rebuild-index" class="button primary">重建索引</button>
-        <button id="refresh-dashboard" class="button">刷新</button>
-      </div>
-    </header>
+  <div class="app-layout">
+    <!-- 左侧导航 -->
+    <aside class="sidebar">
+      <header class="sidebar-header">
+        <h1 class="logo">一人开发公司 OS</h1>
+        <p class="tagline">Control Plane</p>
+      </header>
 
-    <section class="stats-grid" aria-label="系统指标">
-      <article class="stat-card"><span id="total-projects">-</span><small>项目</small></article>
-      <article class="stat-card"><span id="active-agents">-</span><small>运行中 Agent</small></article>
-      <article class="stat-card"><span id="blocked-projects">-</span><small>阻塞项目</small></article>
-      <article class="stat-card"><span id="lessons-count">-</span><small>经验条目</small></article>
-    </section>
+      <nav class="nav-menu">
+        <button class="nav-item active" data-view="dashboard">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">仪表盘</span>
+        </button>
+        <button class="nav-item" data-view="products">
+          <span class="nav-icon">📦</span>
+          <span class="nav-label">产品树</span>
+        </button>
+        <button class="nav-item" data-view="projects">
+          <span class="nav-icon">📁</span>
+          <span class="nav-label">项目（旧）</span>
+        </button>
+        <button class="nav-item" data-view="iterations">
+          <span class="nav-icon">🔄</span>
+          <span class="nav-label">迭代中心</span>
+        </button>
+        <button class="nav-item" data-view="agents">
+          <span class="nav-icon">🤖</span>
+          <span class="nav-label">Agent 运行</span>
+        </button>
+        <button class="nav-item" data-view="memory">
+          <span class="nav-icon">🧠</span>
+          <span class="nav-label">记忆中心</span>
+        </button>
+        <button class="nav-item" data-view="logs">
+          <span class="nav-icon">📝</span>
+          <span class="nav-label">日志</span>
+        </button>
+      </nav>
 
-    <section class="panel">
-      <div class="panel-heading">
-        <h2>项目</h2>
-        <p id="status-message">等待加载</p>
+      <footer class="sidebar-footer">
+        <button id="rebuild-index" class="button-small">重建索引</button>
+      </footer>
+    </aside>
+
+    <!-- 右侧内容区 -->
+    <main class="content-area">
+      <!-- 仪表盘视图 -->
+      <div id="view-dashboard" class="view active">
+        <header class="view-header">
+          <h2>仪表盘</h2>
+          <div class="actions">
+            <span id="status-message" class="status-message"></span>
+            <button id="refresh-dashboard" class="button">刷新</button>
+          </div>
+        </header>
+
+        <section class="stats-grid">
+          <article class="stat-card"><span id="total-projects">-</span><small>项目</small></article>
+          <article class="stat-card"><span id="active-agents">-</span><small>运行中 Agent</small></article>
+          <article class="stat-card"><span id="blocked-projects">-</span><small>阻塞项目</small></article>
+          <article class="stat-card"><span id="lessons-count">-</span><small>经验条目</small></article>
+        </section>
+
+        <div class="two-column">
+          <section class="panel">
+            <h3>阻塞与 Gate</h3>
+            <div id="blockers-list" class="stack"></div>
+          </section>
+          <section class="panel">
+            <h3>最近活动</h3>
+            <div id="recent-activity" class="stack"></div>
+          </section>
+        </div>
       </div>
-      <div id="projects-list" class="project-list"></div>
-    </section>
 
-    <section class="two-column">
-      <article class="panel">
-        <h2>阻塞与 Gate</h2>
-        <div id="blockers-list" class="stack"></div>
-      </article>
-      <article class="panel">
-        <h2>启动 Runner</h2>
-        <form id="runner-form" class="runner-form">
-          <label>命令
-            <select id="command-type">
-              <option value="intake">/intake</option>
-              <option value="go">/go</option>
-              <option value="recover">/recover</option>
+      <!-- 产品树视图 -->
+      <div id="view-products" class="view" hidden>
+        <header class="view-header">
+          <h2>产品树</h2>
+          <button id="new-product-btn" class="button primary">新建产品</button>
+        </header>
+
+        <div id="products-tree" class="products-tree"></div>
+
+        <!-- 新建产品表单 -->
+        <dialog id="product-dialog" class="dialog">
+          <form id="product-form" class="form">
+            <h3 id="product-form-title">新建产品</h3>
+            <label>产品名称
+              <input id="product-name" type="text" required>
+            </label>
+            <label>描述
+              <textarea id="product-description" rows="3"></textarea>
+            </label>
+            <label>目标交付日期
+              <input id="product-target-date" type="date">
+            </label>
+            <div class="form-actions">
+              <button class="button primary" type="submit">保存</button>
+              <button class="button" type="button" data-close-dialog>取消</button>
+            </div>
+          </form>
+        </dialog>
+
+        <!-- 新建 Milestone 表单 -->
+        <dialog id="milestone-dialog" class="dialog">
+          <form id="milestone-form" class="form">
+            <h3>新建 Milestone</h3>
+            <input type="hidden" id="milestone-product-id">
+            <label>名称
+              <input id="milestone-name" type="text" required>
+            </label>
+            <label>描述
+              <textarea id="milestone-description" rows="3"></textarea>
+            </label>
+            <label>目标日期
+              <input id="milestone-target-date" type="date">
+            </label>
+            <div class="form-actions">
+              <button class="button primary" type="submit">保存</button>
+              <button class="button" type="button" data-close-dialog>取消</button>
+            </div>
+          </form>
+        </dialog>
+
+        <!-- 新建 Workstream 表单 -->
+        <dialog id="workstream-dialog" class="dialog">
+          <form id="workstream-form" class="form">
+            <h3>新建 Workstream</h3>
+            <input type="hidden" id="workstream-milestone-id">
+            <label>名称
+              <input id="workstream-name" type="text" required>
+            </label>
+            <label>描述
+              <textarea id="workstream-description" rows="3"></textarea>
+            </label>
+            <label>关联项目（可选）
+              <input id="workstream-project-name" type="text" placeholder="留空表示不关联旧项目">
+            </label>
+            <div class="form-actions">
+              <button class="button primary" type="submit">保存</button>
+              <button class="button" type="button" data-close-dialog>取消</button>
+            </div>
+          </form>
+        </dialog>
+
+        <!-- 新建 Task 表单 -->
+        <dialog id="task-dialog" class="dialog">
+          <form id="task-form" class="form">
+            <h3>新建 Task</h3>
+            <input type="hidden" id="task-workstream-id">
+            <label>标题
+              <input id="task-title" type="text" required>
+            </label>
+            <label>描述
+              <textarea id="task-description" rows="3"></textarea>
+            </label>
+            <label>Agent 角色
+              <select id="task-agent-role">
+                <option value="architect">Architect</option>
+                <option value="backend">Backend</option>
+                <option value="frontend">Frontend</option>
+                <option value="qa-engineer">QA Engineer</option>
+                <option value="devops">DevOps</option>
+              </select>
+            </label>
+            <label>验收标准
+              <textarea id="task-acceptance" rows="2" placeholder="每行一条"></textarea>
+            </label>
+            <div class="form-actions">
+              <button class="button primary" type="submit">保存</button>
+              <button class="button" type="button" data-close-dialog>取消</button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+
+      <!-- 项目视图（旧） -->
+      <div id="view-projects" class="view" hidden>
+        <header class="view-header">
+          <h2>项目（旧流程）</h2>
+          <p class="subtitle">兼容 /intake、/go、/recover 流程</p>
+        </header>
+        <div id="projects-list" class="project-list"></div>
+      </div>
+
+      <!-- 迭代中心视图 -->
+      <div id="view-iterations" class="view" hidden>
+        <div id="cr-section">
+        <header class="view-header">
+          <h2>迭代中心</h2>
+          <button id="new-cr-toggle" class="button primary">新建变更请求</button>
+        </header>
+
+        <form id="cr-form" class="form panel" hidden>
+          <label>项目名
+            <input id="cr-project-name" type="text" required>
+          </label>
+          <label>标题
+            <input id="cr-title" type="text" required>
+          </label>
+          <label>来源
+            <select id="cr-source">
+              <option value="user_input">用户输入</option>
+              <option value="qa_finding">QA 发现</option>
+              <option value="online_issue">线上问题</option>
+              <option value="internal">内部改进</option>
             </select>
           </label>
-          <label>目标名
-            <input id="target-name" type="text" pattern="[一-龥A-Za-z0-9_-]+" required>
+          <label>范围
+            <select id="cr-scope">
+              <option value="project">项目</option>
+              <option value="workstream">工作流</option>
+              <option value="milestone">里程碑</option>
+            </select>
           </label>
-          <button class="button primary" type="submit">启动</button>
+          <label>优先级
+            <select id="cr-priority">
+              <option value="medium">中</option>
+              <option value="high">高</option>
+              <option value="critical">紧急</option>
+              <option value="low">低</option>
+            </select>
+          </label>
+          <label>当前行为
+            <textarea id="cr-current-behavior" rows="2" required></textarea>
+          </label>
+          <label>期望行为
+            <textarea id="cr-expected-behavior" rows="2" required></textarea>
+          </label>
+          <label>验收标准（每行一条）
+            <textarea id="cr-acceptance-criteria" rows="3" required></textarea>
+          </label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">提交</button>
+            <button id="cr-form-cancel" class="button" type="button">取消</button>
+          </div>
         </form>
-        <div id="runs-list" class="stack"></div>
-      </article>
-    </section>
 
-    <section class="panel">
-      <h2>最近日志</h2>
-      <div id="logs-list" class="log-list"></div>
-    </section>
-
-    <section class="panel" id="cr-section">
-      <div class="panel-heading">
-        <h2>迭代中心</h2>
-        <button id="new-cr-toggle" class="button">新建变更请求</button>
+        <div id="cr-list" class="stack"></div>
+        </div><!-- /cr-section -->
       </div>
 
-      <form id="cr-form" class="cr-form" hidden>
-        <label>项目名
-          <input id="cr-project-name" type="text" required>
-        </label>
-        <label>标题
-          <input id="cr-title" type="text" required>
-        </label>
-        <label>来源
-          <select id="cr-source">
-            <option value="user_input">用户输入</option>
-            <option value="qa_finding">QA 发现</option>
-            <option value="online_issue">线上问题</option>
-            <option value="internal">内部改进</option>
-          </select>
-        </label>
-        <label>范围
-          <select id="cr-scope">
-            <option value="project">项目</option>
-            <option value="workstream">工作流</option>
-            <option value="milestone">里程碑</option>
-          </select>
-        </label>
-        <label>优先级
-          <select id="cr-priority">
-            <option value="medium">中</option>
-            <option value="high">高</option>
-            <option value="critical">紧急</option>
-            <option value="low">低</option>
-          </select>
-        </label>
-        <label>当前行为
-          <textarea id="cr-current-behavior" rows="2" required></textarea>
-        </label>
-        <label>期望行为
-          <textarea id="cr-expected-behavior" rows="2" required></textarea>
-        </label>
-        <label>验收标准（每行一条）
-          <textarea id="cr-acceptance-criteria" rows="3" required></textarea>
-        </label>
-        <div class="form-actions">
-          <button class="button primary" type="submit">提交</button>
-          <button id="cr-form-cancel" class="button" type="button">取消</button>
-        </div>
-      </form>
+      <!-- Agent 运行视图 -->
+      <div id="view-agents" class="view" hidden>
+        <header class="view-header">
+          <h2>Agent 运行中心</h2>
+        </header>
 
-      <div id="cr-list" class="stack"></div>
-    </section>
+        <section class="panel">
+          <h3>启动 Runner</h3>
+          <form id="runner-form" class="runner-form">
+            <label>命令
+              <select id="command-type">
+                <option value="intake">/intake</option>
+                <option value="go">/go</option>
+                <option value="recover">/recover</option>
+              </select>
+            </label>
+            <label>目标名
+              <input id="target-name" type="text" pattern="[一-龥A-Za-z0-9_-]+" required>
+            </label>
+            <button class="button primary" type="submit">启动</button>
+          </form>
+        </section>
 
-    <section class="panel" id="memory-section">
-      <div class="panel-heading">
-        <h2>记忆中心</h2>
-        <div class="actions">
-          <button id="memory-compress-btn" class="button">触发压缩</button>
-          <button id="memory-event-toggle" class="button">记录事件</button>
-        </div>
+        <section class="panel">
+          <h3>运行中的 Agent</h3>
+          <div id="runs-list" class="stack"></div>
+        </section>
       </div>
 
-      <form id="memory-event-form" class="cr-form" hidden>
-        <label>事件类型
-          <select id="memory-event-type">
-            <option value="user_message">用户消息</option>
-            <option value="decision">决策</option>
-          </select>
-        </label>
-        <label>范围类型
-          <select id="memory-scope-type">
-            <option value="company">公司</option>
-            <option value="project">项目</option>
-            <option value="cr">变更请求</option>
-          </select>
-        </label>
-        <label>范围 ID
-          <input id="memory-scope-id" type="text" required>
-        </label>
-        <label>内容
-          <textarea id="memory-payload" rows="3" required></textarea>
-        </label>
-        <div class="form-actions">
-          <button class="button primary" type="submit">提交</button>
-          <button id="memory-event-cancel" class="button" type="button">取消</button>
-        </div>
-      </form>
+      <!-- 记忆中心视图 -->
+      <div id="view-memory" class="view" hidden>
+        <header class="view-header">
+          <h2>记忆中心</h2>
+          <div class="actions">
+            <button id="memory-compress-btn" class="button">触发压缩</button>
+            <button id="memory-event-toggle" class="button">记录事件</button>
+          </div>
+        </header>
 
-      <div class="memory-tabs">
-        <button class="memory-tab active" data-tab="events">事件</button>
-        <button class="memory-tab" data-tab="episodes">Episodes</button>
-        <button class="memory-tab" data-tab="facts">Facts</button>
-        <button class="memory-tab" data-tab="pack">Retrieval Pack</button>
+        <form id="memory-event-form" class="form panel" hidden>
+          <label>事件类型
+            <select id="memory-event-type">
+              <option value="user_message">用户消息</option>
+              <option value="decision">决策</option>
+            </select>
+          </label>
+          <label>范围类型
+            <select id="memory-scope-type">
+              <option value="company">公司</option>
+              <option value="project">项目</option>
+              <option value="cr">变更请求</option>
+            </select>
+          </label>
+          <label>范围 ID
+            <input id="memory-scope-id" type="text" required>
+          </label>
+          <label>内容
+            <textarea id="memory-payload" rows="3" required></textarea>
+          </label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">提交</button>
+            <button id="memory-event-cancel" class="button" type="button">取消</button>
+          </div>
+        </form>
+
+        <div class="memory-tabs">
+          <button class="memory-tab active" data-tab="events">事件</button>
+          <button class="memory-tab" data-tab="episodes">Episodes</button>
+          <button class="memory-tab" data-tab="facts">Facts</button>
+          <button class="memory-tab" data-tab="pack">Retrieval Pack</button>
+        </div>
+
+        <div id="memory-events-panel" class="memory-panel stack"></div>
+        <div id="memory-episodes-panel" class="memory-panel stack" hidden></div>
+        <div id="memory-facts-panel" class="memory-panel stack" hidden></div>
+        <div id="memory-pack-panel" class="memory-panel" hidden></div>
       </div>
 
-      <div id="memory-events-panel" class="memory-panel stack"></div>
-      <div id="memory-episodes-panel" class="memory-panel stack" hidden></div>
-      <div id="memory-facts-panel" class="memory-panel stack" hidden></div>
-      <div id="memory-pack-panel" class="memory-panel" hidden></div>
-    </section>
-  </main>
+      <!-- 日志视图 -->
+      <div id="view-logs" class="view" hidden>
+        <header class="view-header">
+          <h2>最近日志</h2>
+        </header>
+        <div id="logs-list" class="log-list"></div>
+      </div>
+    </main>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>
