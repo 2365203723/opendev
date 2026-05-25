@@ -77,6 +77,31 @@ describe('createClaudeRunner', () => {
     expect(finishedRuns[0]).toMatchObject({ status: 'failed', exitCode: 1, errorMessage: 'permission denied' });
   });
 
+  it('resolves the Claude npm shim to the Windows executable without shell interpolation', async () => {
+    const spawnCalls = [];
+    const runner = createClaudeRunner({
+      config: { claudeCommand: 'claude', claudeAssetsDir: 'H:/claude-assets', logsDir: tmpDir },
+      store: { createRun: () => {}, finishRun: () => {} },
+      spawnFn: (file, args, options) => {
+        spawnCalls.push({ file, args, options });
+        return createProcess(0);
+      },
+      idFn: () => 'run-win-exe',
+      nowFn: () => '2026-05-22T04:00:00.000Z',
+      platform: 'win32',
+      resolveCommandFn: () => 'C:/Users/me/AppData/Roaming/npm/claude',
+      fileExistsFn: filePath => filePath.endsWith('/node_modules/@anthropic-ai/claude-code/bin/claude.exe')
+    });
+
+    await runner.start({ commandType: 'go', targetName: 'demo' });
+
+    expect(spawnCalls[0].file).toBe('C:/Users/me/AppData/Roaming/npm/node_modules/@anthropic-ai/claude-code/bin/claude.exe');
+    expect(spawnCalls[0].args).toContain('--output-format');
+    expect(spawnCalls[0].args).toContain('stream-json');
+    expect(spawnCalls[0].options.shell).toBe(false);
+    expect(spawnCalls[0].options.stdio).toEqual(['ignore', 'pipe', 'pipe']);
+  });
+
   it('marks spawn errors failed once and writes the error to logs', async () => {
     const finishedRuns = [];
     const child = new EventEmitter();
