@@ -9,16 +9,14 @@ describe('buildClaudeCommand', () => {
       targetName: 'demo-client'
     });
 
-    expect(command).toEqual({
-      file: 'claude',
-      args: [
-        '-p',
-        '在 H:/claude-assets 中执行 /go demo-client。遵守项目 CLAUDE.md、governance 规则和 Codex 双审要求。',
-        '--output-format',
-        'json'
-      ],
-      prompt: '在 H:/claude-assets 中执行 /go demo-client。遵守项目 CLAUDE.md、governance 规则和 Codex 双审要求。'
-    });
+    expect(command.file).toBe('claude');
+    expect(command.args).toContain('-p');
+    expect(command.args).toContain('--output-format');
+    expect(command.args).toContain('stream-json');
+    expect(command.args).toContain('--verbose');
+    // prompt 包含核心指令（ETHOS 可能被 prepend，只检查关键子串）
+    expect(command.prompt).toContain('/go demo-client');
+    expect(command.prompt).toContain('H:/claude-assets');
   });
 
   it('allows only intake, go, and recover command types', () => {

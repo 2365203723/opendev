@@ -1,8 +1,23 @@
+const fs = require('fs');
+const path = require('path');
+
 const COMMANDS = new Set(['intake', 'go', 'recover', 'patch', 'memory']);
 const SAFE_TARGET = /^[\p{L}\p{N}_-]+$/u;
 
+function loadEthos(claudeAssetsDir) {
+  try {
+    const ethosPath = path.join(claudeAssetsDir, 'ETHOS.md');
+    return fs.readFileSync(ethosPath, 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
 function buildPrompt({ claudeAssetsDir, commandType, targetName }) {
-  return `在 ${claudeAssetsDir} 中执行 /${commandType} ${targetName}。遵守项目 CLAUDE.md、governance 规则和 Codex 双审要求。`;
+  const ethos = loadEthos(claudeAssetsDir);
+  const core = `在 ${claudeAssetsDir} 中执行 /${commandType} ${targetName}。遵守项目 CLAUDE.md、governance 规则和 Codex 双审要求。`;
+  if (!ethos) return core;
+  return `${ethos}\n\n---\n\n${core}`;
 }
 
 function buildPatchPrompt({ claudeAssetsDir, crId, patchPhase, projectName, ...rest }) {
@@ -132,7 +147,7 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
     const prompt = buildPatchPrompt({ claudeAssetsDir, crId, patchPhase, projectName, ...rest });
     return {
       file: claudeCommand,
-      args: ['-p', prompt, '--output-format', 'json'],
+      args: ['-p', prompt, '--output-format', 'stream-json', '--verbose'],
       prompt
     };
   }
@@ -141,7 +156,7 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
     const prompt = buildMemoryPrompt({ claudeAssetsDir, memoryPhase, scopeType, scopeId, ...rest });
     return {
       file: claudeCommand,
-      args: ['-p', prompt, '--output-format', 'json'],
+      args: ['-p', prompt, '--output-format', 'stream-json', '--verbose'],
       prompt
     };
   }
@@ -153,9 +168,19 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
   const basePrompt = rest.prompt || buildPrompt({ claudeAssetsDir, commandType, targetName });
   const env = buildScopeEnv({ scopeType, scopeId, productId, milestoneId, workstreamId, taskId, agentRole, projectName, acceptanceRef });
 
+  // --resume 模式：用已有 session 追加指令
+  if (rest.resumeSessionId) {
+    return {
+      file: claudeCommand,
+      args: ['-p', basePrompt, '--resume', rest.resumeSessionId, '--output-format', 'stream-json', '--verbose'],
+      prompt: basePrompt,
+      ...(env ? { env } : {})
+    };
+  }
+
   return {
     file: claudeCommand,
-    args: ['-p', basePrompt, '--output-format', 'json'],
+    args: ['-p', basePrompt, '--output-format', 'stream-json', '--verbose'],
     prompt: basePrompt,
     ...(env ? { env } : {})
   };
