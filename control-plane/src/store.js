@@ -64,8 +64,15 @@ function createStore(db) {
   `);
   const finishRun = db.prepare(`
     UPDATE runs
-    SET status = @status, exit_code = @exitCode, error_message = @errorMessage, finished_at = @finishedAt
+    SET status = @status, exit_code = @exitCode, error_message = @errorMessage, finished_at = @finishedAt,
+        token_in = COALESCE(@tokenIn, token_in),
+        token_out = COALESCE(@tokenOut, token_out),
+        duration_ms = COALESCE(@durationMs, duration_ms),
+        cost_cents = COALESCE(@costCents, cost_cents)
     WHERE id = @id
+  `);
+  const updateRunSessionId = db.prepare(`
+    UPDATE runs SET session_id = @sessionId WHERE id = @id
   `);
 
   const insertCr = db.prepare(`
@@ -201,14 +208,70 @@ function createStore(db) {
       ORDER BY type ASC, path ASC
     `).all(projectName),
     createRun: run => insertRun.run(run),
-    finishRun: run => finishRun.run(run),
+    finishRun: run => finishRun.run({
+      id: run.id,
+      status: run.status,
+      exitCode: run.exitCode ?? null,
+      errorMessage: run.errorMessage ?? null,
+      finishedAt: run.finishedAt,
+      tokenIn: run.tokenIn ?? null,
+      tokenOut: run.tokenOut ?? null,
+      durationMs: run.durationMs ?? null,
+      costCents: run.costCents ?? null
+    }),
+    updateRunSessionId: (id, sessionId) => updateRunSessionId.run({ id, sessionId }),
     listRuns: () => db.prepare(`
       SELECT id, command_type AS commandType, target_name AS targetName, status, prompt, log_path AS logPath,
-             exit_code AS exitCode, error_message AS errorMessage, started_at AS startedAt, finished_at AS finishedAt
+             exit_code AS exitCode, error_message AS errorMessage, started_at AS startedAt, finished_at AS finishedAt,
+             session_id AS sessionId,
+             token_in AS tokenIn, token_out AS tokenOut, duration_ms AS durationMs, cost_cents AS costCents
       FROM runs
       ORDER BY started_at DESC
       LIMIT 50
     `).all(),
+    getRun: id => db.prepare(`
+      SELECT id, command_type AS commandType, target_name AS targetName, status, prompt, log_path AS logPath,
+             exit_code AS exitCode, error_message AS errorMessage, started_at AS startedAt, finished_at AS finishedAt,
+             session_id AS sessionId,
+             token_in AS tokenIn, token_out AS tokenOut, duration_ms AS durationMs, cost_cents AS costCents
+      FROM runs WHERE id = ?
+    `).get(id) || null,
+
+    // ─── approvals ────────────────────────────────────────────────────────────
+    createApproval: approval => db.prepare(`
+      INSERT INTO approvals (id, run_id, prompt_snapshot, status, created_at)
+      VALUES (@id, @runId, @promptSnapshot, 'pending', @createdAt)
+    `).run(approval),
+    getApproval: id => db.prepare(`
+      SELECT id, run_id AS runId, prompt_snapshot AS promptSnapshot, status,
+             created_at AS createdAt, resolved_at AS resolvedAt, resolution_note AS resolutionNote
+      FROM approvals WHERE id = ?
+    `).get(id) || null,
+    updateApprovalStatus: (id, status, note) => db.prepare(`
+      UPDATE approvals SET status = ?, resolved_at = ?, resolution_note = ? WHERE id = ?
+    `).run(status, new Date().toISOString(), note || null, id),
+    listPendingApprovals: () => db.prepare(`
+      SELECT id, run_id AS runId, prompt_snapshot AS promptSnapshot, status,
+             created_at AS createdAt, resolved_at AS resolvedAt, resolution_note AS resolutionNote
+      FROM approvals WHERE status = 'pending'
+      ORDER BY created_at ASC
+    `).all(),
+
+    // ─── cost summary ─────────────────────────────────────────────────────────
+    getCostSummary: () => {
+      const total = db.prepare(`SELECT COALESCE(SUM(cost_cents), 0) AS total FROM runs`).get().total;
+      const byType = db.prepare(`
+        SELECT command_type AS commandType,
+               COALESCE(SUM(token_in), 0) AS totalTokenIn,
+               COALESCE(SUM(token_out), 0) AS totalTokenOut,
+               COALESCE(SUM(cost_cents), 0) AS totalCostCents,
+               COUNT(*) AS runCount
+        FROM runs
+        GROUP BY command_type
+        ORDER BY totalCostCents DESC
+      `).all();
+      return { totalCostCents: total, byCommandType: byType };
+    },
     createCr: cr => insertCr.run(cr),
     getCr: id => db.prepare(`
       SELECT id, project_name AS projectName, title, source, scope,

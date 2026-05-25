@@ -112,7 +112,22 @@ function openDatabase(databasePath) {
       exit_code INTEGER,
       error_message TEXT,
       started_at TEXT NOT NULL,
-      finished_at TEXT
+      finished_at TEXT,
+      token_in INTEGER,
+      token_out INTEGER,
+      duration_ms INTEGER,
+      cost_cents REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS approvals (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      prompt_snapshot TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      resolved_at TEXT,
+      resolution_note TEXT,
+      FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS change_requests (
@@ -214,6 +229,41 @@ function openDatabase(databasePath) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Migrate runs table: add missing columns
+  const runsColumns = db.prepare(`PRAGMA table_info(runs)`).all().map(c => c.name);
+  if (!runsColumns.includes('session_id')) {
+    db.exec(`ALTER TABLE runs ADD COLUMN session_id TEXT`);
+  }
+  if (!runsColumns.includes('token_in')) {
+    db.exec(`ALTER TABLE runs ADD COLUMN token_in INTEGER`);
+  }
+  if (!runsColumns.includes('token_out')) {
+    db.exec(`ALTER TABLE runs ADD COLUMN token_out INTEGER`);
+  }
+  if (!runsColumns.includes('duration_ms')) {
+    db.exec(`ALTER TABLE runs ADD COLUMN duration_ms INTEGER`);
+  }
+  if (!runsColumns.includes('cost_cents')) {
+    db.exec(`ALTER TABLE runs ADD COLUMN cost_cents REAL`);
+  }
+
+  // Migrate: create approvals table if missing
+  const hasApprovals = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='approvals'`).get();
+  if (!hasApprovals) {
+    db.exec(`
+      CREATE TABLE approvals (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        prompt_snapshot TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolution_note TEXT,
+        FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+      )
+    `);
+  }
 
   // Migrate gates table if needed
   const needsMigration = db.prepare(`

@@ -27,6 +27,7 @@ describe('SQLite store', () => {
     expect(foreignKeys).toBe(1);
     expect(tables).toEqual([
       'agents',
+      'approvals',
       'artifacts',
       'change_requests',
       'cr_documents',
@@ -242,7 +243,12 @@ describe('SQLite store', () => {
         exitCode: 0,
         errorMessage: null,
         startedAt: '2026-05-22T03:00:00.000Z',
-        finishedAt: '2026-05-22T03:01:00.000Z'
+        finishedAt: '2026-05-22T03:01:00.000Z',
+        sessionId: null,
+        tokenIn: null,
+        tokenOut: null,
+        durationMs: null,
+        costCents: null
       }
     ]);
   });

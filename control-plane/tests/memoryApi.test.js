@@ -49,7 +49,12 @@ function createDb() {
       exit_code INTEGER,
       error_message TEXT,
       started_at TEXT NOT NULL,
-      finished_at TEXT
+      finished_at TEXT,
+      session_id TEXT,
+      token_in INTEGER,
+      token_out INTEGER,
+      duration_ms INTEGER,
+      cost_cents REAL
     );
     CREATE TABLE change_requests (
       id TEXT PRIMARY KEY,

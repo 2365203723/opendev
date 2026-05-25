@@ -49,7 +49,12 @@ function createDb() {
       exit_code INTEGER,
       error_message TEXT,
       started_at TEXT NOT NULL,
-      finished_at TEXT
+      finished_at TEXT,
+      session_id TEXT,
+      token_in INTEGER,
+      token_out INTEGER,
+      duration_ms INTEGER,
+      cost_cents REAL
     );
     CREATE TABLE change_requests (
       id TEXT PRIMARY KEY,
@@ -445,7 +450,21 @@ describe('POST /api/change-requests/:id/execute-patch', () => {
         exit_code INTEGER,
         error_message TEXT,
         started_at TEXT NOT NULL,
-        finished_at TEXT
+        finished_at TEXT,
+        session_id TEXT,
+        token_in INTEGER,
+        token_out INTEGER,
+        duration_ms INTEGER,
+        cost_cents REAL
+      );
+      CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        prompt_snapshot TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolution_note TEXT
       );
       CREATE TABLE change_requests (
         id TEXT PRIMARY KEY,
@@ -637,7 +656,21 @@ describe('POST /api/change-requests/:id/trigger-regression', () => {
         exit_code INTEGER,
         error_message TEXT,
         started_at TEXT NOT NULL,
-        finished_at TEXT
+        finished_at TEXT,
+        session_id TEXT,
+        token_in INTEGER,
+        token_out INTEGER,
+        duration_ms INTEGER,
+        cost_cents REAL
+      );
+      CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        prompt_snapshot TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolution_note TEXT
       );
       CREATE TABLE change_requests (
         id TEXT PRIMARY KEY,
@@ -783,7 +816,21 @@ describe('状态机推进（onComplete 回调）', () => {
         exit_code INTEGER,
         error_message TEXT,
         started_at TEXT NOT NULL,
-        finished_at TEXT
+        finished_at TEXT,
+        session_id TEXT,
+        token_in INTEGER,
+        token_out INTEGER,
+        duration_ms INTEGER,
+        cost_cents REAL
+      );
+      CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        prompt_snapshot TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolution_note TEXT
       );
       CREATE TABLE change_requests (
         id TEXT PRIMARY KEY,
