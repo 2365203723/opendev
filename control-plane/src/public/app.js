@@ -9,7 +9,19 @@ const state = {
   approvalsTimer: null,
   selectedType: 'go',
   activeRunId: null,
-  lastSessionId: null
+  lastSessionId: null,
+  projects: [],
+  runs: [],
+  searchQuery: '',
+  approvalCount: 0,
+  costSummary: null,
+  activeMainView: 'home',
+  activeWorkspacePanel: null,
+  selectedProjectName: null,
+  selectedProjectDetail: null,
+  activeTranscriptFilter: 'all',
+  currentRunEvents: [],
+  currentRunToolCounts: {}
 };
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -78,16 +90,159 @@ function showToast(message, type = 'error') {
 async function loadHomePage() {
   setStatusDot('loading');
   try {
-    const [{ projects = [] }, { runs = [] }] = await Promise.all([
+    const [{ projects = [] }, { runs = [] }, costData] = await Promise.all([
       fetchJson('/api/projects').catch(() => ({ projects: [] })),
-      fetchJson('/api/runs').catch(() => ({ runs: [] }))
+      fetchJson('/api/runs').catch(() => ({ runs: [] })),
+      fetchJson('/api/stats/costs').catch(() => null)
     ]);
-    renderProjectCards(projects, runs);
+    state.projects = projects;
+    state.runs = runs;
+    state.costSummary = costData;
+    renderFilteredHome();
+    if (state.activeMainView === 'project' && state.selectedProjectName) {
+      loadProjectDetail(state.selectedProjectName);
+    }
+    refreshPipelineViz(projects, runs);
+    renderSidebar(projects, runs);
+    updateStatusbar(projects, runs);
     setStatusDot('ok');
   } catch (e) {
     setStatusDot('error');
+    updateStatusbar(state.projects, state.runs, true);
     showToast(e.message || '加载失败');
   }
+}
+
+function getSearchFilteredData() {
+  const q = state.searchQuery.trim().toLowerCase();
+  if (!q) return { projects: state.projects, runs: state.runs };
+  const projects = state.projects.filter(p => [p.name, p.phase, p.status, p.complexity].some(v => String(v || '').toLowerCase().includes(q)));
+  const projectNames = new Set(projects.map(p => p.name));
+  const runs = state.runs.filter(r => projectNames.has(r.targetName) || [r.targetName, r.commandType, r.status].some(v => String(v || '').toLowerCase().includes(q)));
+  const namesFromRuns = new Set(runs.map(r => r.targetName).filter(Boolean));
+  const mergedProjects = [
+    ...projects,
+    ...state.projects.filter(p => namesFromRuns.has(p.name) && !projectNames.has(p.name))
+  ];
+  return { projects: mergedProjects, runs };
+}
+
+function renderFilteredHome() {
+  const { projects, runs } = getSearchFilteredData();
+  renderProjectCards(projects, runs);
+}
+
+function statusDotClass(status) {
+  if (status === 'running') return 'running';
+  if (status === 'completed' || status === 'done') return 'done';
+  if (status === 'failed' || status === 'blocked' || status === 'paused_permission') return 'blocked';
+  return '';
+}
+
+function renderSidebar(projects, runs) {
+  renderSidebarProjects(projects, runs);
+  renderSidebarRuns(runs);
+  renderSidebarAgents(projects, runs);
+}
+
+function renderSidebarProjects(projects, runs) {
+  const container = el('sidebar-projects');
+  if (!container) return;
+  container.replaceChildren();
+  const names = new Set();
+  const rows = [];
+  projects.forEach(p => {
+    names.add(p.name);
+    const latestRun = runs.find(r => r.targetName === p.name);
+    rows.push({ name: p.name, status: p.status || latestRun?.status || '', meta: PHASE_LABELS[p.phase] || p.phase || '—' });
+  });
+  runs.forEach(r => {
+    if (!r.targetName || names.has(r.targetName)) return;
+    names.add(r.targetName);
+    rows.push({ name: r.targetName, status: r.status, meta: r.commandType || 'run' });
+  });
+  if (!rows.length) { container.appendChild(sidebarEmpty('暂无项目')); return; }
+  rows.slice(0, 12).forEach(row => {
+    const item = sidebarItem(row.name, row.meta, row.status);
+    item.addEventListener('click', () => {
+      openProjectDetail(row.name);
+    });
+    container.appendChild(item);
+  });
+}
+
+function renderSidebarRuns(runs) {
+  const container = el('sidebar-runs');
+  if (!container) return;
+  container.replaceChildren();
+  const activeRuns = runs.filter(r => r.status === 'running' || r.status === 'paused_permission').slice(0, 6);
+  if (!activeRuns.length) { container.appendChild(sidebarEmpty('暂无运行中任务')); return; }
+  activeRuns.forEach(run => {
+    const item = sidebarItem(run.targetName || '未命名运行', run.commandType || run.status, run.status);
+    if (run.logPath) item.addEventListener('click', () => openRunDetail(run));
+    container.appendChild(item);
+  });
+}
+
+function renderSidebarAgents(projects, runs) {
+  const container = el('sidebar-agents');
+  if (!container) return;
+  container.replaceChildren();
+  PIPELINE_AGENTS.forEach(agent => {
+    const isActive = getActiveAgent(projects, runs) === agent;
+    const idx = PIPELINE_AGENTS.indexOf(agent);
+    const label = document.querySelector(`.agent-node[data-agent="${agent}"] .agent-label`)?.textContent || agent;
+    const item = sidebarItem(label, `#${idx + 1}`, isActive ? 'running' : '');
+    item.addEventListener('click', () => toggleAgentProjects(agent));
+    container.appendChild(item);
+  });
+}
+
+function sidebarItem(name, meta, status) {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = 'sidebar-item';
+  const dot = document.createElement('span');
+  dot.className = `sidebar-dot ${statusDotClass(status)}`;
+  const nameEl = document.createElement('span');
+  nameEl.className = 'sidebar-item-name';
+  nameEl.textContent = name;
+  nameEl.title = name;
+  const metaEl = document.createElement('span');
+  metaEl.className = 'sidebar-item-meta';
+  metaEl.textContent = meta || '';
+  item.append(dot, nameEl, metaEl);
+  return item;
+}
+
+function sidebarEmpty(text) {
+  const emptyEl = document.createElement('div');
+  emptyEl.className = 'sidebar-empty';
+  emptyEl.textContent = text;
+  return emptyEl;
+}
+
+function getActiveAgent(projects, runs) {
+  const runningRun = runs.find(r => r.status === 'running');
+  if (runningRun) {
+    const project = projects.find(p => p.name === runningRun.targetName);
+    return PHASE_TO_AGENT[project?.phase || runningRun.commandType] || 'architect';
+  }
+  const activeProject = projects.find(p => p.status === 'active' || p.status === 'in_progress');
+  return activeProject ? (PHASE_TO_AGENT[activeProject.phase] || 'intake-analyst') : null;
+}
+
+function updateStatusbar(projects = [], runs = [], hasError = false) {
+  const conn = el('status-conn-text');
+  if (conn) conn.textContent = hasError ? '连接异常' : '已连接';
+  const projectCount = el('status-project-count');
+  if (projectCount) projectCount.textContent = String(projects.length);
+  const runningCount = el('status-running-count');
+  if (runningCount) runningCount.textContent = String(runs.filter(r => r.status === 'running' || r.status === 'paused_permission').length);
+  const approvalCount = el('status-approval-count');
+  if (approvalCount) approvalCount.textContent = String(state.approvalCount || 0);
+  const cost = el('status-cost');
+  if (cost) cost.textContent = state.costSummary ? `${Number(state.costSummary.totalCostCents || 0).toFixed(2)}¢` : '—';
 }
 
 function renderProjectCards(projects, runs) {
@@ -103,13 +258,15 @@ function renderProjectCards(projects, runs) {
     return;
   }
 
-  // 按项目名聚合最新 run
+  // 按项目名聚合 run（用于去重显示卡片 + 统计迭代次数）
   const runByProject = {};
+  const iterationCounts = {};
   runs.forEach(r => {
     const key = r.targetName || '—';
     if (!runByProject[key] || new Date(r.startedAt) > new Date(runByProject[key].startedAt)) {
       runByProject[key] = r;
     }
+    iterationCounts[key] = (iterationCounts[key] || 0) + 1;
   });
 
   // 合并：以 projects 为主，补充只有 runs 没有 project 记录的
@@ -121,20 +278,352 @@ function renderProjectCards(projects, runs) {
       name: p.name,
       phase: p.phase || 'intake',
       status: p.status || 'active',
-      run: runByProject[p.name] || null
+      run: runByProject[p.name] || null,
+      iterations: iterationCounts[p.name] || 0
     })),
     ...extraNames.map(n => ({
       name: n,
       phase: runByProject[n]?.commandType || '—',
       status: runByProject[n]?.status || 'unknown',
-      run: runByProject[n]
+      run: runByProject[n],
+      iterations: iterationCounts[n] || 1
     }))
   ];
 
   cards.forEach(card => container.appendChild(renderProjectCard(card)));
 }
 
-function renderProjectCard({ name, phase, status, run }) {
+function showMainView(viewName) {
+  state.activeMainView = viewName;
+  const home = document.querySelector('.home');
+  const detail = el('project-detail-view');
+  const workspace = el('workspace-panel-view');
+  if (home) home.hidden = viewName !== 'home';
+  if (detail) detail.hidden = viewName !== 'project';
+  if (workspace) workspace.hidden = viewName !== 'workspace';
+  document.querySelectorAll('[data-shell-panel]').forEach(item => {
+    const isHome = viewName === 'home' && item.dataset.shellPanel === 'dashboard';
+    const isWorkspace = viewName === 'workspace' && item.dataset.shellPanel === state.activeWorkspacePanel;
+    item.classList.toggle('active', isHome || isWorkspace);
+  });
+}
+
+const WORKSPACE_PANEL_META = {
+  monitor: { title: '运行记录', subtitle: '查看 Agent 运行、待审批事项和实时日志。' },
+  pipeline: { title: '流水线', subtitle: '按项目追踪从需求到部署的交付阶段。' },
+  memory: { title: '记忆', subtitle: '管理 Facts、Episodes、Events 和 Retrieval Pack。' }
+};
+
+function openWorkspacePanel(panel) {
+  const target = el(`panel-${panel}`);
+  if (!target) return;
+  state.activeWorkspacePanel = panel;
+  document.querySelectorAll('#workspace-panel-content > .shell-panel-content').forEach(item => {
+    const isActive = item.id === `panel-${panel}`;
+    item.hidden = !isActive;
+    if (isActive) item.removeAttribute('hidden');
+    else item.setAttribute('hidden', '');
+  });
+  el('workspace-panel-title').textContent = WORKSPACE_PANEL_META[panel]?.title || '工作区';
+  el('workspace-panel-subtitle').textContent = WORKSPACE_PANEL_META[panel]?.subtitle || '';
+  showMainView('workspace');
+  if (panel === 'monitor') {
+    loadRuns();
+    if (state.approvalsTimer) clearInterval(state.approvalsTimer);
+    state.approvalsTimer = setInterval(loadApprovals, 3000);
+  } else if (state.approvalsTimer) {
+    clearInterval(state.approvalsTimer);
+    state.approvalsTimer = null;
+  }
+  if (panel === 'pipeline') loadPipeline();
+  if (panel === 'memory') loadMemory();
+}
+
+function closeWorkspacePanel() {
+  if (state.approvalsTimer) {
+    clearInterval(state.approvalsTimer);
+    state.approvalsTimer = null;
+  }
+  state.activeWorkspacePanel = null;
+  showMainView('home');
+}
+
+async function openProjectDetail(projectName) {
+  if (!projectName) return;
+  state.selectedProjectName = projectName;
+  showMainView('project');
+  await loadProjectDetail(projectName);
+}
+
+async function loadProjectDetail(projectName) {
+  const title = el('project-detail-title');
+  const summary = el('project-detail-summary');
+  if (title) title.textContent = projectName;
+  if (summary) summary.textContent = '加载项目工作区…';
+  try {
+    const runsData = await fetchJson('/api/runs').catch(() => ({ runs: state.runs }));
+    const existingProject = state.projects.find(p => p.name === projectName);
+    const detail = existingProject
+      ? await fetchJson(`/api/projects/${encodeURIComponent(projectName)}`)
+      : {
+          project: { name: projectName, phase: 'run', status: 'run-only', complexity: 'unknown' },
+          agents: [],
+          gates: [],
+          artifacts: []
+        };
+    const data = { ...detail, runs: runsData.runs || [] };
+    state.selectedProjectDetail = data;
+    renderProjectDetail(data);
+  } catch (e) {
+    state.selectedProjectDetail = null;
+    if (summary) summary.textContent = e.message || '项目详情加载失败';
+    ['project-detail-agents', 'project-detail-runs', 'project-detail-gates', 'project-detail-artifacts'].forEach(id => {
+      const node = el(id);
+      if (node) node.replaceChildren(empty('加载失败'));
+    });
+    showToast(e.message || '项目详情加载失败');
+  }
+}
+
+function renderProjectDetail(data) {
+  const project = data.project || {};
+  const title = el('project-detail-title');
+  const summary = el('project-detail-summary');
+  if (title) title.textContent = project.name || state.selectedProjectName || '项目详情';
+  if (summary) {
+    const phase = PHASE_LABELS[project.phase] || project.phase || '未知阶段';
+    const status = project.status || 'unknown';
+    const complexity = project.complexity || 'unknown';
+    summary.textContent = `${phase} · ${status} · ${complexity}`;
+  }
+  renderProjectDetailAgents(data.agents || []);
+  renderProjectDetailRuns(project.name || state.selectedProjectName, data.runs || []);
+  renderProjectDetailGates(data.gates || []);
+  renderProjectContext(project.name || state.selectedProjectName);
+  renderProjectDetailArtifacts(data.artifacts || []);
+}
+
+function renderProjectDetailAgents(agents) {
+  const container = el('project-detail-agents');
+  if (!container) return;
+  container.replaceChildren();
+  if (!agents.length) { container.appendChild(empty('暂无 Agent 状态')); return; }
+  agents.forEach(agent => {
+    const row = document.createElement('div');
+    row.className = 'project-detail-row';
+    const info = document.createElement('div');
+    info.className = 'project-detail-row-info';
+    const title = document.createElement('div');
+    title.className = 'project-detail-row-title';
+    title.textContent = agent.name || 'unknown';
+    const meta = document.createElement('div');
+    meta.className = 'project-detail-row-meta';
+    meta.textContent = agent.blockReason || agent.lastRun || '—';
+    info.append(title, meta);
+    row.append(info, badge(agent.status || 'unknown', agent.status));
+    container.appendChild(row);
+  });
+}
+
+function renderProjectDetailRuns(projectName, runs) {
+  const container = el('project-detail-runs');
+  if (!container) return;
+  container.replaceChildren();
+  const projectRuns = runs.filter(r => r.targetName === projectName).slice(0, 8);
+  if (!projectRuns.length) { container.appendChild(empty('暂无运行记录')); return; }
+  projectRuns.forEach(run => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'project-detail-row project-detail-row-button';
+    row.addEventListener('click', () => openRunDetail(run));
+    const info = document.createElement('div');
+    info.className = 'project-detail-row-info';
+    const title = document.createElement('div');
+    title.className = 'project-detail-row-title';
+    title.textContent = `${run.commandType || 'run'} · ${run.id ? run.id.slice(0, 8) : '—'}`;
+    const meta = document.createElement('div');
+    meta.className = 'project-detail-row-meta';
+    meta.textContent = timeAgo(run.startedAt || run.createdAt);
+    info.append(title, meta);
+    row.append(info, badge(run.status || 'unknown', run.status));
+    container.appendChild(row);
+  });
+}
+
+function renderProjectDetailGates(gates) {
+  renderGateSummary(gates);
+  renderGateList(gates);
+}
+
+function normalizeGate(gate) {
+  return {
+    name: gate.gateName || gate.name || 'Gate',
+    status: gate.status || 'unknown',
+    evidencePath: gate.evidencePath || '',
+    checkedAt: gate.checkedAt || '',
+    scopeType: gate.scopeType || 'project',
+    scopeId: gate.scopeId || state.selectedProjectName || ''
+  };
+}
+
+function getGateStatusClass(status) {
+  if (status === 'pass' || status === 'passed' || status === 'completed') return 'completed';
+  if (status === 'fail' || status === 'failed' || status === 'blocked') return 'failed';
+  if (status === 'warning') return 'warning';
+  return '';
+}
+
+function renderGateSummary(gates) {
+  const container = el('quality-gate-summary');
+  if (!container) return;
+  container.replaceChildren();
+  const normalized = gates.map(normalizeGate);
+  const passed = normalized.filter(g => getGateStatusClass(g.status) === 'completed').length;
+  const failed = normalized.filter(g => getGateStatusClass(g.status) === 'failed').length;
+  const warning = normalized.filter(g => getGateStatusClass(g.status) === 'warning').length;
+  [['通过', passed], ['失败', failed], ['警告', warning], ['总数', normalized.length]].forEach(([label, value]) => {
+    const card = document.createElement('div');
+    card.className = 'quality-summary-card';
+    const valueEl = document.createElement('strong');
+    valueEl.textContent = String(value);
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+    card.append(valueEl, labelEl);
+    container.appendChild(card);
+  });
+}
+
+function renderGateList(gates) {
+  const container = el('quality-gate-list');
+  const actions = el('quality-regression-actions');
+  const legacy = el('project-detail-gates');
+  if (legacy) legacy.replaceChildren();
+  if (!container) return;
+  container.replaceChildren();
+  if (actions) actions.replaceChildren();
+  const normalized = gates.map(normalizeGate);
+  if (!normalized.length) { container.appendChild(empty('暂无 Gate 数据')); return; }
+  normalized.forEach(gate => {
+    const row = document.createElement('div');
+    row.className = `quality-gate-card ${getGateStatusClass(gate.status)}`;
+    const info = document.createElement('div');
+    info.className = 'project-detail-row-info';
+    const title = document.createElement('div');
+    title.className = 'project-detail-row-title';
+    title.textContent = gate.name;
+    const meta = document.createElement('div');
+    meta.className = 'project-detail-row-meta';
+    meta.textContent = gate.evidencePath || gate.checkedAt || '无证据路径';
+    info.append(title, meta);
+    row.append(info, badge(gate.status, getGateStatusClass(gate.status)));
+    if (getGateStatusClass(gate.status) === 'failed') {
+      row.appendChild(btn('创建修复请求', 'btn btn-sm', () => openGateFixDialog(gate)));
+    }
+    container.appendChild(row);
+  });
+  if (actions) {
+    const failedCount = normalized.filter(g => getGateStatusClass(g.status) === 'failed').length;
+    actions.textContent = failedCount ? `${failedCount} 个质量门失败，建议创建修复请求并触发回归。` : '当前没有失败质量门。';
+  }
+}
+
+function renderGateEvidence(gate) {
+  return gate.evidencePath || gate.checkedAt || '无证据路径';
+}
+
+function openGateFixDialog(gate) {
+  const projectName = state.selectedProjectName || gate.scopeId;
+  el('gate-fix-project').value = projectName;
+  el('gate-fix-gate').value = gate.name;
+  el('gate-fix-preview').textContent = `${projectName} · ${gate.name} · ${gate.status}`;
+  el('gate-fix-title').value = `${gate.name} 未通过`;
+  el('gate-fix-current').value = renderGateEvidence(gate);
+  el('gate-fix-expected').value = `${gate.name} 达到通过状态`;
+  el('gate-fix-criteria').value = `${gate.name} 状态为 pass\n相关测试或审查证据已生成`;
+  const dialog = el('gate-fix-dialog');
+  if (dialog.showModal) dialog.showModal();
+  else dialog.removeAttribute('hidden');
+}
+
+function renderProjectContext(projectName) {
+  const scope = el('context-scope-selector');
+  if (scope) scope.textContent = `当前范围：project/${projectName || '—'}`;
+  loadContextPack('project', projectName, 'context-pack-preview');
+  loadContextFacts('project', projectName, 'context-facts-preview');
+  const actions = el('context-compress-actions');
+  if (!actions) return;
+  actions.replaceChildren();
+  actions.appendChild(btn('触发项目压缩', 'btn btn-sm', () => triggerMemoryCompress('project', projectName)));
+}
+
+async function loadContextPack(scopeType, scopeId, targetId) {
+  const container = el(targetId);
+  if (!container) return;
+  container.textContent = '加载 Retrieval Pack…';
+  try {
+    const packsData = await fetchJson(`/api/memory/packs?scopeType=${encodeURIComponent(scopeType)}&scopeId=${encodeURIComponent(scopeId || '')}&limit=1`);
+    const pack = (packsData.packs || [])[0];
+    if (!pack) throw new Error('no active pack found');
+    const content = typeof pack.content === 'string' ? pack.content : JSON.stringify(pack.content, null, 2);
+    container.textContent = `Pack · ${scopeType}/${scopeId}\n${content.slice(0, 360)}${content.length > 360 ? '…' : ''}`;
+  } catch {
+    if (scopeType !== 'company') {
+      container.textContent = `暂无 ${scopeType}/${scopeId} Pack，将使用公司级默认上下文。`;
+      return;
+    }
+    container.textContent = '暂无 Retrieval Pack。';
+  }
+}
+
+async function loadContextFacts(scopeType, scopeId, targetId) {
+  const container = el(targetId);
+  if (!container) return;
+  container.textContent = '加载 Facts…';
+  try {
+    const data = await fetchJson(`/api/memory/facts?scopeType=${encodeURIComponent(scopeType)}&scopeId=${encodeURIComponent(scopeId || '')}&status=active&limit=5`);
+    const facts = data.facts || [];
+    if (!facts.length) { container.textContent = '暂无项目级 Active Facts。'; return; }
+    container.textContent = `Active Facts · ${facts.length}\n${facts.map(f => `- ${f.content}`).join('\n').slice(0, 360)}`;
+  } catch (e) {
+    container.textContent = e.message || 'Facts 加载失败';
+  }
+}
+
+async function triggerMemoryCompress(scopeType, scopeId) {
+  try {
+    await fetchJson('/api/memory/compress', {
+      method: 'POST',
+      body: JSON.stringify({ scopeType, scopeId })
+    });
+    showToast(`已触发压缩 · ${scopeType}/${scopeId}`, 'success');
+  } catch (e) {
+    showToast(e.message || '触发压缩失败');
+  }
+}
+
+function renderProjectDetailArtifacts(artifacts) {
+  const container = el('project-detail-artifacts');
+  if (!container) return;
+  container.replaceChildren();
+  if (!artifacts.length) { container.appendChild(empty('暂无产物索引')); return; }
+  artifacts.slice(0, 10).forEach(artifact => {
+    const row = document.createElement('div');
+    row.className = 'project-detail-row';
+    const info = document.createElement('div');
+    info.className = 'project-detail-row-info';
+    const title = document.createElement('div');
+    title.className = 'project-detail-row-title';
+    title.textContent = artifact.type || 'artifact';
+    const meta = document.createElement('div');
+    meta.className = 'project-detail-row-meta';
+    meta.textContent = artifact.path || artifact.summary || '—';
+    info.append(title, meta);
+    row.append(info);
+    container.appendChild(row);
+  });
+}
+
+function renderProjectCard({ name, phase, status, run, iterations }) {
   const isRunning = run?.status === 'running';
   const isDone = run?.status === 'completed' || status === 'done';
   const isBlocked = status === 'blocked' || run?.status === 'failed';
@@ -156,7 +645,8 @@ function renderProjectCard({ name, phase, status, run }) {
 
   const meta = document.createElement('div');
   meta.className = 'project-card-meta';
-  meta.textContent = phase;
+  const phaseLabel = PHASE_LABELS[phase] || phase;
+  meta.textContent = `${phaseLabel}${iterations > 0 ? ` · ${iterations} 次迭代` : ''}`;
 
   const footer = document.createElement('div');
   footer.className = 'project-card-footer';
@@ -166,9 +656,23 @@ function renderProjectCard({ name, phase, status, run }) {
   time.textContent = run ? timeAgo(run.startedAt || run.createdAt) : '';
 
   const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:6px;';
+  actions.style.cssText = 'display:flex;gap:6px;align-items:center;';
+
+  const iterateBtn = document.createElement('button');
+  iterateBtn.className = 'project-card-iterate-btn';
+  iterateBtn.textContent = '继续迭代';
+  iterateBtn.title = `在 ${name} 上追加一轮开发`;
+  iterateBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    openIterateDialog(name);
+  });
+  actions.appendChild(iterateBtn);
+
   if (run?.logPath) {
-    actions.appendChild(btn('日志', 'btn btn-sm', () => openRunDetail(run)));
+    actions.appendChild(btn('日志', 'btn btn-sm', e => {
+      e.stopPropagation();
+      openRunDetail(run);
+    }));
   }
 
   footer.append(time, actions);
@@ -176,24 +680,277 @@ function renderProjectCard({ name, phase, status, run }) {
 
   div.addEventListener('click', e => {
     if (e.target.closest('button')) return;
-    if (run) openRunDetail(run);
-    else openSettingsDrawer('pipeline');
+    openProjectDetail(name);
   });
 
   return div;
 }
 
-// ── 设置抽屉 ─────────────────────────────────────────────────────────────────
+const PHASE_LABELS = {
+  intake: '需求分析',
+  design: '技术设计',
+  build: '开发构建',
+  qa: '质量测试',
+  review: '代码审查',
+  security: '安全审计',
+  devops: '部署上线',
+  done: '已完成',
+  go: '开发中',
+  recover: '修复中',
+  patch: '补丁中',
+  memory: '记忆压缩'
+};
+
+// ── Agent 流水线可视化 ─────────────────────────────────────────────────────────
+
+const PIPELINE_AGENTS = [
+  'intake-analyst', 'ceo', 'product-strategist', 'architect', 'ux-designer', 'pm-planner',
+  'backend', 'frontend', 'qa-engineer', 'security-engineer', 'reviewer', 'devops'
+];
+
+const PHASE_TO_AGENT = {
+  intake: 'intake-analyst', design: 'architect', build: 'backend',
+  qa: 'qa-engineer', review: 'reviewer', security: 'security-engineer',
+  devops: 'devops', done: 'devops'
+};
+
+function refreshPipelineViz(projects, runs) {
+  // 找当前活跃的项目
+  const runningRun = runs.find(r => r.status === 'running');
+  const statusText = el('pipeline-status-text');
+  const allNodes = document.querySelectorAll('.agent-node');
+
+  // 重置所有节点
+  allNodes.forEach(n => n.classList.remove('active', 'done'));
+
+  if (!runningRun && !projects.some(p => p.phase && p.phase !== 'done')) {
+    if (statusText) { statusText.textContent = '待命中'; statusText.className = 'pipeline-status-text'; }
+    return;
+  }
+
+  // 确定当前活跃的 agent
+  let activeAgent = null;
+  if (runningRun) {
+    const project = projects.find(p => p.name === runningRun.targetName);
+    const phase = project?.phase || runningRun.commandType;
+    activeAgent = PHASE_TO_AGENT[phase] || 'architect';
+  } else {
+    const activeProject = projects.find(p => p.status === 'active' || p.status === 'in_progress');
+    if (activeProject) {
+      activeAgent = PHASE_TO_AGENT[activeProject.phase] || 'intake-analyst';
+    }
+  }
+
+  if (activeAgent) {
+    const activeIdx = PIPELINE_AGENTS.indexOf(activeAgent);
+    allNodes.forEach(node => {
+      const agentName = node.dataset.agent;
+      const idx = PIPELINE_AGENTS.indexOf(agentName);
+      if (idx === activeIdx) node.classList.add('active');
+      else if (idx >= 0 && idx < activeIdx) node.classList.add('done');
+    });
+
+    if (statusText) {
+      const projectName = runningRun?.targetName || projects.find(p => p.status === 'active')?.name || '';
+      const label = document.querySelector(`.agent-node.active .agent-label`)?.textContent || activeAgent;
+      statusText.textContent = projectName ? `${projectName} · ${label}中` : `${label}中`;
+      statusText.className = 'pipeline-status-text active';
+    }
+  }
+}
+
+// ── Agent 节点点击：展开负责项目 ─────────────────────────────────────────────────
+
+let selectedAgentNode = null;
+
+function toggleAgentProjects(agentName) {
+  const row = el('agent-projects-row');
+  const inner = el('agent-projects-inner');
+
+  // 如果点击同一个 agent，收起
+  if (selectedAgentNode === agentName) {
+    selectedAgentNode = null;
+    row.hidden = true;
+    document.querySelectorAll('.agent-node').forEach(n => n.style.outline = '');
+    return;
+  }
+
+  selectedAgentNode = agentName;
+  row.hidden = false;
+  inner.replaceChildren();
+
+  // 高亮选中节点
+  document.querySelectorAll('.agent-node').forEach(n => {
+    n.style.outline = n.dataset.agent === agentName ? `2px solid var(--primary)` : '';
+  });
+
+  // 映射 agentName 到 project phase
+  const AGENT_TO_PHASE = {
+    'intake-analyst': 'intake',
+    'ceo': 'intake',
+    'product-strategist': 'design',
+    'architect': 'design',
+    'ux-designer': 'design',
+    'pm-planner': 'build',
+    'backend': 'build',
+    'frontend': 'build',
+    'qa-engineer': 'qa',
+    'security-engineer': 'security',
+    'reviewer': 'review',
+    'devops': 'devops'
+  };
+
+  const targetPhase = AGENT_TO_PHASE[agentName];
+  if (!targetPhase) { inner.appendChild(empty('未知 Agent')); return; }
+
+  // 收集匹配的项目
+  fetchJson('/api/projects').then(({ projects = [] }) => {
+    const matched = projects.filter(p => (p.phase || 'intake') === targetPhase);
+    if (!matched.length) {
+      const tip = document.createElement('p');
+      tip.className = 'empty';
+      tip.style.padding = '8px 0';
+      tip.textContent = '暂无项目在此阶段';
+      inner.appendChild(tip);
+      return;
+    }
+    matched.forEach(p => {
+      const chip = document.createElement('div');
+      chip.className = 'agent-project-chip';
+      chip.addEventListener('click', () => openIterateDialog(p.name));
+
+      const dot = document.createElement('div');
+      dot.className = `agent-project-chip-dot ${p.status === 'blocked' ? 'blocked' : p.status === 'done' ? 'done' : ''}`;
+      if (p.status === 'active' || p.status === 'in_progress') dot.classList.add('running');
+
+      const name = document.createElement('span');
+      name.textContent = p.name;
+      name.style.cssText = 'font-weight:500;';
+
+      const phase = document.createElement('span');
+      phase.style.cssText = 'font-size:11px;color:var(--text-muted);';
+      phase.textContent = PHASE_LABELS[p.phase] || p.phase || '';
+
+      chip.append(dot, name, phase);
+      inner.appendChild(chip);
+    });
+  }).catch(() => {
+    inner.appendChild(empty('加载失败'));
+  });
+}
+
+// 点击流水线外部关闭
+document.addEventListener('click', e => {
+  if (!selectedAgentNode) return;
+  const viz = el('pipeline-viz');
+  if (viz && !viz.contains(e.target)) {
+    selectedAgentNode = null;
+    el('agent-projects-row').hidden = true;
+    document.querySelectorAll('.agent-node').forEach(n => n.style.outline = '');
+  }
+});
+
+// 绑定 agent 节点点击
+document.querySelector('.pipeline-track').addEventListener('click', e => {
+  const node = e.target.closest('.agent-node');
+  if (!node) return;
+  toggleAgentProjects(node.dataset.agent);
+});
+
+// ── 迭代对话框 ─────────────────────────────────────────────────────────────────
+
+function openIterateDialog(projectName) {
+  const dialog = el('iterate-dialog');
+  el('iterate-project').value = projectName;
+  el('iterate-prompt').value = '';
+  el('iterate-criteria').value = '';
+  loadContextPack('project', projectName, 'iterate-context-preview');
+  el('iterate-submit-btn').disabled = false;
+  el('iterate-submit-btn').textContent = '启动迭代';
+  if (dialog.showModal) dialog.showModal();
+  else dialog.removeAttribute('hidden');
+}
+
+el('iterate-cancel').addEventListener('click', () => {
+  el('iterate-dialog').close?.();
+});
+
+el('iterate-context-refresh')?.addEventListener('click', () => {
+  const projectName = el('iterate-project').value;
+  if (projectName) loadContextPack('project', projectName, 'iterate-context-preview');
+});
+
+el('gate-fix-cancel')?.addEventListener('click', () => {
+  el('gate-fix-dialog').close?.();
+});
+
+el('gate-fix-form')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const projectName = el('gate-fix-project').value;
+  const criteria = el('gate-fix-criteria').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!criteria.length) { el('gate-fix-criteria').focus(); return; }
+  const submitBtn = el('gate-fix-submit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '创建中…';
+  try {
+    await fetchJson('/api/change-requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectName,
+        title: el('gate-fix-title').value.trim(),
+        source: 'qa_finding',
+        scope: 'project',
+        currentBehavior: el('gate-fix-current').value.trim(),
+        expectedBehavior: el('gate-fix-expected').value.trim(),
+        acceptanceCriteria: criteria,
+        priority: 'high'
+      })
+    });
+    el('gate-fix-dialog').close?.();
+    showToast('修复请求已创建', 'success');
+  } catch (err) {
+    showToast(err.message || '创建失败');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '创建';
+  }
+});
+
+el('iterate-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const projectName = el('iterate-project').value.trim();
+  const promptText = el('iterate-prompt').value.trim();
+  if (!promptText) { el('iterate-prompt').focus(); return; }
+
+  const criteria = el('iterate-criteria').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const submitBtn = el('iterate-submit-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '启动中…';
+
+  const fullPrompt = `在 ${projectName} 中执行 /go，这是已有项目的延续迭代。遵守项目 CLAUDE.md、governance 规则和 Codex 双审要求。请先读取项目现有文件和状态，在此基础上继续开发。\n\n## 本轮迭代目标\n${promptText}${criteria.length ? '\n\n## 验收标准\n' + criteria.map(l => `- ${l}`).join('\n') : ''}`;
+
+  try {
+    setStatusDot('loading');
+    await fetchJson('/api/runs', {
+      method: 'POST',
+      body: JSON.stringify({ commandType: 'go', targetName: projectName, prompt: fullPrompt })
+    });
+    el('iterate-dialog').close?.();
+    setStatusDot('ok');
+    showToast(`迭代已启动 · ${projectName}`, 'success');
+    await loadHomePage();
+  } catch (err) {
+    setStatusDot('error');
+    showToast(err.message || '启动失败');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '启动迭代';
+  }
+});
 
 function openSettingsDrawer(panel = 'cli') {
   el('settings-drawer').hidden = false;
   switchDrawerPanel(panel);
-  if (panel === 'monitor') {
-    loadRuns();
-    state.approvalsTimer = setInterval(loadApprovals, 3000);
-  }
-  if (panel === 'pipeline') loadPipeline();
-  if (panel === 'memory') loadMemory();
   if (panel === 'costs') loadDashboard();
   if (panel === 'skills') loadSkills();
   if (panel === 'mcps') loadMcps();
@@ -216,7 +973,7 @@ function switchDrawerPanel(name) {
   document.querySelectorAll('.drawer-nav-item').forEach(item => {
     item.classList.toggle('active', item.dataset.panel === name);
   });
-  document.querySelectorAll('.drawer-panel-content').forEach(panel => {
+  document.querySelectorAll('.drawer-content > .drawer-panel-content').forEach(panel => {
     const match = panel.id === `panel-${name}`;
     panel.hidden = !match;
     if (!match) panel.setAttribute('hidden', '');
@@ -225,6 +982,7 @@ function switchDrawerPanel(name) {
 }
 
 el('settings-btn').addEventListener('click', () => openSettingsDrawer('cli'));
+el('cli-badge')?.addEventListener('click', () => openSettingsDrawer('cli'));
 el('settings-close').addEventListener('click', closeSettingsDrawer);
 el('settings-overlay').addEventListener('click', closeSettingsDrawer);
 
@@ -232,10 +990,7 @@ document.querySelectorAll('.drawer-nav-item').forEach(item => {
   item.addEventListener('click', () => {
     const panel = item.dataset.panel;
     switchDrawerPanel(panel);
-    if (panel === 'monitor') { loadRuns(); state.approvalsTimer = setInterval(loadApprovals, 3000); }
-    else if (state.approvalsTimer) { clearInterval(state.approvalsTimer); state.approvalsTimer = null; }
-    if (panel === 'pipeline') loadPipeline();
-    if (panel === 'memory') loadMemory();
+    if (state.approvalsTimer) { clearInterval(state.approvalsTimer); state.approvalsTimer = null; }
     if (panel === 'costs') loadDashboard();
     if (panel === 'skills') loadSkills();
     if (panel === 'mcps') loadMcps();
@@ -245,10 +1000,10 @@ document.querySelectorAll('.drawer-nav-item').forEach(item => {
 // ── 执行模式：CLI 扫描 ────────────────────────────────────────────────────────
 
 const CLI_KNOWN = [
-  { name: 'Claude Code', key: 'claude',   icon: '🤖', desc: 'Anthropic official CLI' },
-  { name: 'Codex CLI',   key: 'codex',    icon: '🔷', desc: 'OpenAI official CLI' },
-  { name: 'Gemini CLI',  key: 'gemini',   icon: '🔵', desc: 'Google official CLI' },
-  { name: 'OpenCode',    key: 'opencode', icon: '⬜', desc: 'Open-source agent CLI' }
+  { name: 'Claude Code', key: 'claude',   icon: 'CC', iconClass: 'claude', desc: 'Anthropic official CLI' },
+  { name: 'Codex CLI',   key: 'codex',    icon: 'CX', iconClass: 'codex', desc: 'OpenAI official CLI' },
+  { name: 'Gemini CLI',  key: 'gemini',   icon: 'GM', iconClass: 'gemini', desc: 'Google official CLI' },
+  { name: 'OpenCode',    key: 'opencode', icon: 'OC', iconClass: 'opencode', desc: 'Open-source agent CLI' }
 ];
 
 function getDefaultCLI() { return localStorage.getItem('defaultCLI') || ''; }
@@ -266,6 +1021,7 @@ function updateTopbarBadge(key) {
   if (!badge) return;
   const found = CLI_KNOWN.find(c => c.key === key);
   badge.textContent = found ? found.name : (key || '未选择 CLI');
+  badge.title = '打开执行模式设置';
 }
 
 async function scanLocalCLI(forceRescan = false) {
@@ -274,7 +1030,10 @@ async function scanLocalCLI(forceRescan = false) {
 
   const loadingItem = document.createElement('div');
   loadingItem.className = 'cli-item';
-  loadingItem.innerHTML = '<span class="meta">检测中…</span>';
+  const loadingMeta = document.createElement('span');
+  loadingMeta.className = 'meta';
+  loadingMeta.textContent = '检测中…';
+  loadingItem.appendChild(loadingMeta);
   list.appendChild(loadingItem);
 
   const badge = el('cli-badge');
@@ -301,7 +1060,7 @@ async function scanLocalCLI(forceRescan = false) {
       info.className = 'cli-item-info';
 
       const icon = document.createElement('div');
-      icon.className = 'cli-icon';
+      icon.className = `cli-icon cli-icon-${def.iconClass || def.key}`;
       icon.textContent = def.icon;
 
       const text = document.createElement('div');
@@ -354,7 +1113,10 @@ async function scanLocalCLI(forceRescan = false) {
     list.replaceChildren();
     const item = document.createElement('div');
     item.className = 'cli-item';
-    item.innerHTML = `<span class="meta">检测失败：${e.message}</span>`;
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = `检测失败：${e.message}`;
+    item.appendChild(meta);
     list.appendChild(item);
   }
 }
@@ -375,6 +1137,34 @@ async function testCLI(key, btnEl) {
 }
 
 el('rescan-cli').addEventListener('click', () => scanLocalCLI(true));
+
+// ── 权限绕过开关 ──────────────────────────────────────────────────────────────
+
+async function loadBypassState() {
+  try {
+    const { dangerouslySkipPermissions } = await fetchJson('/api/permissions');
+    const toggle = el('bypass-toggle');
+    const warning = el('bypass-warning');
+    if (toggle) toggle.checked = dangerouslySkipPermissions === true;
+    if (warning) warning.hidden = !dangerouslySkipPermissions;
+  } catch { /* 静默 */ }
+}
+
+el('bypass-toggle').addEventListener('change', async () => {
+  const enabled = el('bypass-toggle').checked;
+  const warning = el('bypass-warning');
+  try {
+    await fetchJson('/api/permissions', {
+      method: 'POST',
+      body: JSON.stringify({ dangerouslySkipPermissions: enabled })
+    });
+    if (warning) warning.hidden = !enabled;
+    showToast(enabled ? '权限绕过已启用 — Claude CLI 可自动操作文件' : '权限绕过已关闭', enabled ? 'error' : 'success');
+  } catch (e) {
+    el('bypass-toggle').checked = !enabled;
+    showToast(e.message || '设置失败');
+  }
+});
 
 document.querySelectorAll('.exec-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -465,7 +1255,10 @@ async function loadByokKeys() {
     panel.appendChild(note);
 
   } catch (e) {
-    panel.innerHTML = `<p class="meta">加载失败：${e.message}</p>`;
+    const error = document.createElement('p');
+    error.className = 'meta';
+    error.textContent = `加载失败：${e.message}`;
+    panel.replaceChildren(error);
   }
 }
 
@@ -532,6 +1325,7 @@ document.querySelectorAll('.pill').forEach(pill => {
     document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
     pill.classList.add('active');
     state.selectedType = pill.dataset.type;
+    state.selectedMode = pill.dataset.mode || 'full';
   });
 });
 
@@ -548,9 +1342,62 @@ el('main-submit').addEventListener('click', () => {
   openLaunchDialog(text, state.selectedType);
 });
 
+const globalSearch = el('global-search');
+if (globalSearch) {
+  globalSearch.addEventListener('input', () => {
+    state.searchQuery = globalSearch.value;
+    const filtered = getSearchFilteredData();
+    renderProjectCards(filtered.projects, filtered.runs);
+    renderSidebar(filtered.projects, filtered.runs);
+  });
+}
+
+document.querySelectorAll('[data-shell-panel]').forEach(item => {
+  item.addEventListener('click', () => {
+    const panel = item.dataset.shellPanel;
+    if (panel === 'dashboard') {
+      state.searchQuery = '';
+      state.selectedProjectName = null;
+      state.selectedProjectDetail = null;
+      closeWorkspacePanel();
+      if (globalSearch) globalSearch.value = '';
+      renderFilteredHome();
+      return;
+    }
+    openWorkspacePanel(panel);
+  });
+});
+
+el('workspace-panel-back')?.addEventListener('click', () => {
+  closeWorkspacePanel();
+});
+
+el('project-detail-back')?.addEventListener('click', () => {
+  state.selectedProjectName = null;
+  state.selectedProjectDetail = null;
+  showMainView('home');
+});
+
+el('project-detail-refresh')?.addEventListener('click', () => {
+  if (state.selectedProjectName) loadProjectDetail(state.selectedProjectName);
+});
+
+el('project-detail-iterate')?.addEventListener('click', () => {
+  if (state.selectedProjectName) openIterateDialog(state.selectedProjectName);
+});
+
 // ── 启动对话框 ────────────────────────────────────────────────────────────────
 
-const launchState = { mode: 'project', commandType: 'go', text: '' };
+const launchState = { mode: 'project', commandType: 'go', selectedMode: 'full', text: '' };
+
+function setLaunchModeNote(text) {
+  const simpleSection = el('launch-simple-section');
+  if (!simpleSection) return;
+  const note = document.createElement('p');
+  note.className = 'launch-mode-note';
+  note.textContent = text;
+  simpleSection.replaceChildren(note);
+}
 
 async function openLaunchDialog(text, pillType) {
   launchState.text = text;
@@ -564,12 +1411,38 @@ async function openLaunchDialog(text, pillType) {
 
   const submitBtn = el('launch-submit-btn');
   submitBtn.disabled = false;
-  submitBtn.textContent = '启动';
+
+  // 根据模式切换表单内容
+  const mode = state.selectedMode || 'full';
+  const projectSection = el('launch-project-section');
+  const simpleSection = el('launch-simple-section');
+
+  if (mode === 'analyze') {
+    // 需求梳理 → 简化表单
+    if (simpleSection) simpleSection.hidden = false;
+    if (projectSection) projectSection.hidden = true;
+    submitBtn.textContent = '开始分析';
+    setLaunchModeNote('AI 将分析需求并输出结构化文档，不编写代码。适合项目启动前的需求梳理阶段。');
+    setLaunchMode('simple');
+  } else if (mode === 'fix') {
+    // 快速修复 → 简化表单
+    if (simpleSection) simpleSection.hidden = false;
+    if (projectSection) projectSection.hidden = true;
+    submitBtn.textContent = '开始修复';
+    setLaunchModeNote('AI 将分析现有代码并定位问题，以最小改动修复 Bug。适合线上问题快速响应。');
+    setLaunchMode('simple');
+  } else {
+    // 完整开发 → 完整表单
+    if (simpleSection) simpleSection.hidden = true;
+    if (projectSection) projectSection.hidden = false;
+    submitBtn.textContent = '启动';
+    setLaunchMode('project');
+  }
 
   // 乐观渲染：先打开对话框，再异步分类
   renderIntentBadge({ mode: 'uncertain', label: '分析中…', description: '' });
-  setLaunchMode('project'); // 默认项目模式，等待分类结果
-  dialog.removeAttribute('hidden'); // 清除可能残留的 hidden 属性
+  loadContextPack('company', 'default', 'launch-context-preview');
+  dialog.removeAttribute('hidden');
   if (dialog.showModal) dialog.showModal();
 
   try {
@@ -578,7 +1451,9 @@ async function openLaunchDialog(text, pillType) {
       body: JSON.stringify({ prompt: text })
     });
     renderIntentBadge(result);
-    setLaunchMode(result.mode === 'simple' ? 'simple' : 'project');
+    if (mode === 'full' && result.mode === 'simple') {
+      setLaunchMode('simple');
+    }
     // 猜项目名
     const guess = text.replace(/[，。！？\s]+/g, '-').replace(/[^a-zA-Z0-9一-龥-]/g, '').slice(0, 20);
     if (guess && !el('launch-project').value) el('launch-project').value = guess;
@@ -648,10 +1523,11 @@ el('launch-form').addEventListener('submit', async e => {
   let projectName, commandType, prompt;
 
   if (mode === 'simple') {
-    // 简单模式：用时间戳生成临时项目名，直接 go
+    // 快速修复 或 需求梳理
     projectName = `quick-${Date.now().toString(36)}`;
-    commandType = 'go';
-    prompt = `快速生成任务（简单模式，无需完整流水线）：\n\n${text}\n\n请直接输出完整代码，不需要经过多阶段审批。`;
+    commandType = launchState.commandType;
+    const modeLabel = state.selectedMode === 'analyze' ? '需求梳理' : '快速修复';
+    prompt = `快速生成任务（${modeLabel}模式）：\n\n${text}\n\n请直接输出结果，不需要经过多阶段审批。`;
   } else {
     projectName = el('launch-project').value.trim();
     if (!projectName) { el('launch-project').focus(); return; }
@@ -708,6 +1584,8 @@ async function loadDashboard() {
       fetchJson('/api/dashboard'),
       fetchJson('/api/stats/costs').catch(() => null)
     ]);
+    state.costSummary = costData;
+    updateStatusbar(state.projects, state.runs);
     const s = data.summary || {};
     el('total-projects').textContent = s.totalProjects ?? 0;
     el('active-agents').textContent = s.activeAgents ?? 0;
@@ -729,8 +1607,15 @@ function renderBlockers(blockers, gates) {
   ].forEach(item => {
     const div = document.createElement('div');
     div.className = 'item';
-    div.innerHTML = `<div><div class="item-title">${item.title}</div><div class="meta">${item.meta}</div></div>`;
-    div.appendChild(badge(item.status, item.status));
+    const info = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'item-title';
+    title.textContent = item.title;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = item.meta;
+    info.append(title, meta);
+    div.append(info, badge(item.status, item.status));
     list.appendChild(div);
   });
 }
@@ -814,7 +1699,7 @@ function renderPipelineCard(project) {
       const existing = step.querySelector('.phase-tooltip');
       if (existing) { existing.remove(); return; }
       try {
-        const { gates = [] } = await fetchJson(`/api/gates/project/${encodeURIComponent(project.name)}`);
+        const { gates = [] } = await fetchJson(`/api/gates?scopeType=project&scopeId=${encodeURIComponent(project.name)}`);
         const phaseGates = gates.filter(g => (g.gateName || g.name || '').toLowerCase().includes(phase));
         const tooltip = document.createElement('div');
         tooltip.className = 'phase-tooltip';
@@ -853,6 +1738,8 @@ async function loadRuns() {
 async function loadApprovals() {
   try {
     const { approvals = [] } = await fetchJson('/api/approvals');
+    state.approvalCount = approvals.length;
+    updateStatusbar(state.projects, state.runs);
     const countEl = el('approvals-count');
     const badgeEl = el('approvals-count-badge');
     if (countEl) countEl.textContent = approvals.length;
@@ -929,6 +1816,19 @@ el('refresh-runs').addEventListener('click', loadRuns);
 
 // ── 运行详情面板 ─────────────────────────────────────────────────────────────
 
+function createPermissionRetryBar(buttonId) {
+  const bar = document.createElement('div');
+  bar.className = 'permission-retry-bar';
+  const text = document.createElement('span');
+  text.textContent = '权限不足，任务已暂停';
+  const button = document.createElement('button');
+  button.id = buttonId;
+  button.className = 'btn btn-primary btn-sm';
+  button.textContent = '批准并重试';
+  bar.append(text, button);
+  return bar;
+}
+
 function openRunDetail(run) {
   const panel = el('run-detail-panel');
   const transcript = el('run-transcript');
@@ -945,9 +1845,45 @@ function openRunDetail(run) {
   costEl.textContent = run.costCents ? `${(run.costCents / 100).toFixed(3)} USD` : '';
   setRunStatusBadge(statusEl, run.status);
   transcript.replaceChildren();
+  state.activeTranscriptFilter = 'all';
+  state.currentRunEvents = [];
+  state.currentRunToolCounts = {};
+  renderRunDetailOverview(run);
+  renderRunAgentTimeline(run);
+  renderRunToolSummary();
+  renderPermissionActions(run);
+  document.querySelectorAll('.transcript-filter-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
   inputRow.hidden = run.status !== 'running';
   state.activeRunId = run.id;
   panel.hidden = false;
+
+  // 权限暂停状态：显示重试条
+  let retryBar = panel.querySelector('.permission-retry-bar');
+  if (retryBar) retryBar.remove();
+  if (run.status === 'paused_permission') {
+    retryBar = createPermissionRetryBar('permission-retry-btn');
+    panel.insertBefore(retryBar, transcript);
+    setTimeout(() => {
+      const retryBtn = el('permission-retry-btn');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', async () => {
+          retryBtn.disabled = true;
+          retryBtn.textContent = '重试中…';
+          try {
+            await fetchJson(`/api/runs/${run.id}/retry`, { method: 'POST' });
+            retryBar.remove();
+            showToast('已带权限绕过重试，等待新运行开始…', 'success');
+            renderPermissionActions({ ...run, status: 'running' });
+            setTimeout(() => loadHomePage(), 1000);
+          } catch (e) {
+            retryBtn.disabled = false;
+            retryBtn.textContent = '批准并重试';
+            showToast(e.message || '重试失败');
+          }
+        });
+      }
+    }, 100);
+  }
 
   if (state.logSource) { state.logSource.close(); state.logSource = null; }
 
@@ -957,11 +1893,43 @@ function openRunDetail(run) {
   src.onmessage = ev => {
     const msg = JSON.parse(ev.data);
     renderTranscriptEvent(transcript, msg);
+    renderRunToolSummary();
+    applyTranscriptFilter();
     transcript.scrollTop = transcript.scrollHeight;
+
+    // 检测权限相关错误，提示用户开启绕过
+    if (msg.kind === 'text' && /permission|权限|denied|EACCES|EPERM|not allowed/i.test(msg.content || '')) {
+      const bypassEnabled = el('bypass-toggle')?.checked;
+      if (!bypassEnabled) {
+        showToast('检测到权限错误。请在 设置 → 执行模式 → 权限绕过 中开启后再试。', 'error');
+      }
+    }
 
     if (msg.kind === 'done') {
       setRunStatusBadge(statusEl, msg.status);
-      inputRow.hidden = true;
+      renderRunDetailOverview({ ...run, status: msg.status, costCents: msg.costUsd ? Number(msg.costUsd) * 100 : run.costCents });
+      renderPermissionActions({ ...run, status: msg.status });
+      if (msg.status === 'paused_permission') {
+        // 流结束后检查 run 状态，如果是暂停则显示重试条
+        const existingBar = panel.querySelector('.permission-retry-bar');
+        if (!existingBar) {
+          const bar = createPermissionRetryBar('permission-retry-btn2');
+          panel.insertBefore(bar, transcript);
+          setTimeout(() => {
+            const btn = el('permission-retry-btn2');
+            if (btn) btn.addEventListener('click', async () => {
+              btn.disabled = true; btn.textContent = '重试中…';
+              try {
+                await fetchJson(`/api/runs/${state.activeRunId}/retry`, { method: 'POST' });
+                bar.remove();
+                showToast('已带权限绕过重试', 'success');
+                setTimeout(() => loadHomePage(), 1000);
+              } catch (e) { btn.disabled = false; btn.textContent = '批准并重试'; showToast(e.message); }
+            });
+          }, 100);
+        }
+        inputRow.hidden = true;
+      }
       if (msg.status === 'completed' && msg.costUsd) {
         costEl.textContent = `${Number(msg.costUsd).toFixed(4)} USD`;
       }
@@ -978,13 +1946,109 @@ function openRunDetail(run) {
 }
 
 function setRunStatusBadge(badgeEl, status) {
-  badgeEl.textContent = status;
+  badgeEl.textContent = status === 'paused_permission' ? '⏸ 等待权限' : status;
   badgeEl.className = 'run-detail-status-badge ' + (status || '');
 }
 
+function renderRunDetailOverview(run) {
+  const container = el('run-detail-overview');
+  if (!container) return;
+  container.replaceChildren();
+  const items = [
+    ['命令', run.commandType || '—'],
+    ['项目', run.targetName || '—'],
+    ['状态', run.status || '—'],
+    ['成本', run.costCents ? `${(run.costCents / 100).toFixed(3)} USD` : '—']
+  ];
+  items.forEach(([label, value]) => {
+    const card = document.createElement('div');
+    card.className = 'run-overview-card';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'run-overview-label';
+    labelEl.textContent = label;
+    const valueEl = document.createElement('strong');
+    valueEl.className = 'run-overview-value';
+    valueEl.textContent = value;
+    card.append(labelEl, valueEl);
+    container.appendChild(card);
+  });
+}
+
+function renderRunAgentTimeline(run) {
+  const container = el('run-agent-timeline');
+  if (!container) return;
+  container.replaceChildren();
+  const project = state.projects.find(p => p.name === run.targetName);
+  const activeAgent = PHASE_TO_AGENT[project?.phase || run.commandType] || 'intake-analyst';
+  PIPELINE_AGENTS.forEach(agent => {
+    const node = document.createElement('div');
+    const idx = PIPELINE_AGENTS.indexOf(agent);
+    const activeIdx = PIPELINE_AGENTS.indexOf(activeAgent);
+    node.className = `run-agent-step${idx === activeIdx ? ' active' : idx < activeIdx ? ' done' : ''}`;
+    node.textContent = agent.replace('-engineer', '').replace('-analyst', '').replace('-planner', '');
+    container.appendChild(node);
+  });
+}
+
+function renderRunToolSummary() {
+  const container = el('run-tool-summary');
+  if (!container) return;
+  container.replaceChildren();
+  const total = state.currentRunEvents.length;
+  const toolUses = state.currentRunToolCounts.tool_use || 0;
+  const toolResults = state.currentRunToolCounts.tool_result || 0;
+  const text = state.currentRunToolCounts.text || 0;
+  [['事件', total], ['文本', text], ['工具调用', toolUses], ['工具结果', toolResults]].forEach(([label, value]) => {
+    const chip = document.createElement('span');
+    chip.className = 'run-tool-chip';
+    chip.textContent = `${label} ${value}`;
+    container.appendChild(chip);
+  });
+}
+
+function renderPermissionActions(run) {
+  const container = el('run-permission-actions');
+  if (!container) return;
+  container.replaceChildren();
+  const isPaused = run.status === 'paused_permission';
+  container.hidden = !isPaused;
+  if (!isPaused) return;
+  const text = document.createElement('span');
+  text.textContent = '权限不足导致任务暂停，可批准后重试，或先检查执行模式设置。';
+  const retry = btn('批准并重试', 'btn btn-primary btn-sm', async () => {
+    retry.disabled = true;
+    retry.textContent = '重试中…';
+    try {
+      await fetchJson(`/api/runs/${run.id}/retry`, { method: 'POST' });
+      showToast('已带权限绕过重试', 'success');
+      renderPermissionActions({ ...run, status: 'running' });
+      setTimeout(() => loadHomePage(), 1000);
+    } catch (e) {
+      retry.disabled = false;
+      retry.textContent = '批准并重试';
+      showToast(e.message || '重试失败');
+    }
+  });
+  const settings = btn('打开执行模式', 'btn btn-sm', () => openSettingsDrawer('cli'));
+  container.append(text, retry, settings);
+}
+
+function applyTranscriptFilter() {
+  const filter = state.activeTranscriptFilter;
+  document.querySelectorAll('#run-transcript .transcript-block').forEach(block => {
+    const kind = block.dataset.kind || 'text';
+    const content = block.textContent || '';
+    const matchesPermission = /permission|权限|denied|EACCES|EPERM|not allowed/i.test(content);
+    block.hidden = !(filter === 'all' || kind === filter || (filter === 'permission' && matchesPermission));
+  });
+}
+
 function renderTranscriptEvent(container, msg) {
+  state.currentRunEvents.push(msg);
+  state.currentRunToolCounts[msg.kind || 'unknown'] = (state.currentRunToolCounts[msg.kind || 'unknown'] || 0) + 1;
   const block = document.createElement('div');
   block.className = 'transcript-block';
+  block.dataset.kind = msg.kind || 'text';
 
   if (msg.kind === 'text') {
     const p = document.createElement('div');
@@ -1058,6 +2122,14 @@ el('run-detail-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); el('run-detail-send').click(); }
 });
 
+document.querySelectorAll('.transcript-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.activeTranscriptFilter = btn.dataset.filter || 'all';
+    document.querySelectorAll('.transcript-filter-btn').forEach(item => item.classList.toggle('active', item === btn));
+    applyTranscriptFilter();
+  });
+});
+
 
 // ── 记忆中心 ──────────────────────────────────────────────────────────────────
 
@@ -1092,8 +2164,8 @@ async function loadMemory() {
     if (evc) evc.textContent = evData.total ?? evData.events?.length ?? 0;
   } catch (e) { showToast(e.message || '加载记忆失败'); }
   try {
-    const pack = await fetchJson('/api/memory/packs/latest?scopeType=company&scopeId=default');
-    renderPack(pack);
+    const data = await fetchJson('/api/memory/packs?scopeType=company&scopeId=default&limit=1');
+    renderPack((data.packs || [])[0]);
   } catch { el('memory-pack-panel').replaceChildren(empty('暂无 Retrieval Pack')); }
 }
 
@@ -1193,7 +2265,16 @@ function renderEvents(events) {
   events.forEach(ev => {
     const card = document.createElement('div');
     card.className = 'memory-event-card';
-    card.innerHTML = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><strong style="font-size:13px;">${ev.eventType}</strong><span class="badge">${ev.source}</span></div><div class="meta">${ev.scopeType}/${ev.scopeId} · ${timeAgo(ev.occurredAt)}</div>`;
+    const header = document.createElement('div');
+    header.className = 'memory-event-card-header';
+    const title = document.createElement('strong');
+    title.className = 'memory-event-title';
+    title.textContent = ev.eventType;
+    header.append(title, badge(ev.source));
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${ev.scopeType}/${ev.scopeId} · ${timeAgo(ev.occurredAt)}`;
+    card.append(header, meta);
     panel.appendChild(card);
   });
 }
@@ -1224,8 +2305,8 @@ function renderPack(pack) {
 }
 
 el('memory-compress-btn').addEventListener('click', async () => {
-  try { await fetchJson('/api/memory/compress', { method: 'POST', body: JSON.stringify({ scopeType: 'company', scopeId: 'default' }) }); }
-  catch {}
+  await triggerMemoryCompress('company', 'default');
+  setTimeout(loadMemory, 1000);
 });
 el('memory-event-toggle').addEventListener('click', () => { const f = el('memory-event-form'); f.hidden = !f.hidden; });
 el('memory-event-cancel').addEventListener('click', () => { el('memory-event-form').hidden = true; el('memory-event-form').reset(); });
@@ -1440,3 +2521,4 @@ async function loadMcps() {
 
 loadHomePage();
 scanLocalCLI();
+loadBypassState();

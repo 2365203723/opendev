@@ -228,6 +228,6 @@ describe('dashboard APIs', () => {
 
     expect(response.status).toBe(202);
     expect(response.body).toMatchObject({ status: 'queued', commandType: 'go', targetName: 'demo-项目_1' });
-    expect(runner.start).toHaveBeenCalledWith({ commandType: 'go', targetName: 'demo-项目_1' });
+    expect(runner.start).toHaveBeenCalledWith(expect.objectContaining({ commandType: 'go', targetName: 'demo-项目_1' }));
   });
 });

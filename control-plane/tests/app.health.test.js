@@ -78,7 +78,8 @@ describe('health API', () => {
       logsDir: 'L:/agents',
       lessonsDir: 'L:/lessons',
       claudeAssetsDir: 'C:/assets',
-      claudeCommand: 'claude-dev'
+      claudeCommand: 'claude-dev',
+      dangerouslySkipPermissions: false
     });
     expect(openDatabase()).toBeNull();
     expect(createStore()).toBeNull();

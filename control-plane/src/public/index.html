@@ -5,20 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Open Dev</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/design-tokens.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 
-  <!-- ── 主页 ── -->
-  <div class="home">
-
-    <header class="topbar">
+  <!-- ── App Shell ── -->
+  <div class="app-shell">
+    <header class="app-topbar">
       <div class="topbar-brand">
         <div class="logo-mark">OD</div>
         <span class="logo-name">Open Dev</span>
       </div>
+      <label class="global-search" aria-label="搜索项目和运行记录">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" width="14" height="14"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg>
+        <input id="global-search" type="search" placeholder="搜索项目、运行记录…">
+      </label>
       <div class="topbar-meta">
-        <span id="cli-badge" class="topbar-badge">检测中…</span>
+        <button id="cli-badge" class="topbar-badge" type="button">检测中…</button>
         <span id="status-dot" class="status-dot"></span>
       </div>
       <button id="settings-btn" class="topbar-settings-btn">
@@ -26,6 +30,31 @@
         设置
       </button>
     </header>
+
+    <aside class="app-sidebar">
+      <section class="sidebar-section">
+        <div class="sidebar-label">Workspace</div>
+        <button class="sidebar-nav-item active" type="button" data-shell-panel="dashboard">仪表盘</button>
+        <button class="sidebar-nav-item" type="button" data-shell-panel="monitor">运行记录</button>
+        <button class="sidebar-nav-item" type="button" data-shell-panel="pipeline">流水线</button>
+        <button class="sidebar-nav-item" type="button" data-shell-panel="memory">记忆</button>
+      </section>
+      <section class="sidebar-section">
+        <div class="sidebar-label">项目</div>
+        <div id="sidebar-projects" class="sidebar-list"></div>
+      </section>
+      <section class="sidebar-section">
+        <div class="sidebar-label">运行中</div>
+        <div id="sidebar-runs" class="sidebar-list"></div>
+      </section>
+      <section class="sidebar-section">
+        <div class="sidebar-label">Agents</div>
+        <div id="sidebar-agents" class="sidebar-list"></div>
+      </section>
+    </aside>
+
+    <main class="app-main">
+      <div class="home">
 
     <section class="hero">
       <h1 class="hero-title">你想开发什么？</h1>
@@ -37,17 +66,77 @@
           rows="3"></textarea>
         <div class="input-footer">
           <div class="type-pills" id="type-pills">
-            <button class="pill active" data-type="go">全栈项目</button>
-            <button class="pill" data-type="go">Web 应用</button>
-            <button class="pill" data-type="go">API 服务</button>
-            <button class="pill" data-type="go">CLI 工具</button>
-            <button class="pill" data-type="recover">修复 Bug</button>
-            <button class="pill" data-type="intake">需求分析</button>
+            <button class="pill active" data-type="go" data-mode="full">完整开发</button>
+            <button class="pill" data-type="recover" data-mode="fix">快速修复</button>
+            <button class="pill" data-type="intake" data-mode="analyze">需求梳理</button>
           </div>
-          <button id="main-submit" class="submit-btn" title="提交 (Ctrl+Enter)">
+          <button id="main-submit" class="submit-btn" title="提交 (Ctrl+Enter)" aria-label="提交需求">
             <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/></svg>
           </button>
         </div>
+      </div>
+    </section>
+
+    <!-- 🆕 Agent 开发流水线 -->
+    <section class="pipeline-viz" id="pipeline-viz">
+      <div class="pipeline-header">
+        <span class="section-title">Agent 开发流水线</span>
+        <span id="pipeline-status-text" class="pipeline-status-text">待命中</span>
+      </div>
+      <div class="pipeline-track">
+        <div class="pipeline-row">
+          <div class="agent-node" data-agent="intake-analyst" title="需求分析师 — 将客户杂乱输入转成结构化需求">
+            <div class="agent-dot">IA</div><span class="agent-label">需求分析</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="ceo" title="CEO — 写项目章程，判定复杂度，把关验收">
+            <div class="agent-dot">CEO</div><span class="agent-label">项目章程</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="product-strategist" title="产品策略师 — 竞品分析，PRD，MoSCoW优先级">
+            <div class="agent-dot">PS</div><span class="agent-label">产品策略</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="architect" title="系统架构师 — 技术选型，数据模型，API契约">
+            <div class="agent-dot">AR</div><span class="agent-label">技术架构</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="ux-designer" title="UX设计师 — 用户旅程，信息架构，交互原型">
+            <div class="agent-dot">UX</div><span class="agent-label">UX设计</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="pm-planner" title="项目经理 — 拆任务，画依赖图，排期">
+            <div class="agent-dot">PM</div><span class="agent-label">任务规划</span>
+          </div>
+        </div>
+        <div class="pipeline-row">
+          <div class="agent-node" data-agent="backend" title="后端工程师 — API，数据库，认证，会话">
+            <div class="agent-dot">BE</div><span class="agent-label">后端开发</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="frontend" title="前端工程师 — HTML/CSS/JS/React 实现">
+            <div class="agent-dot">FE</div><span class="agent-label">前端开发</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="qa-engineer" title="质量工程师 — 自动化测试，覆盖率，性能报告">
+            <div class="agent-dot">QA</div><span class="agent-label">质量测试</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="security-engineer" title="安全工程师 — OWASP渗透，依赖审计，CSP配置">
+            <div class="agent-dot">SE</div><span class="agent-label">安全审计</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="reviewer" title="审查员 — 代码+安全+视觉+性能双盲审查">
+            <div class="agent-dot">RV</div><span class="agent-label">代码审查</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="agent-node" data-agent="devops" title="运维工程师 — Dockerfile，CI/CD，部署">
+            <div class="agent-dot">DO</div><span class="agent-label">部署上线</span>
+          </div>
+        </div>
+      </div>
+      <div id="agent-projects-row" class="agent-projects-row" hidden>
+        <div class="agent-projects-inner" id="agent-projects-inner"></div>
       </div>
     </section>
 
@@ -62,9 +151,150 @@
       <div id="project-cards" class="project-cards"></div>
     </section>
 
-  </div>
+      </div>
 
-  <!-- ── 运行详情面板 ── -->
+      <section id="workspace-panel-view" class="workspace-panel-view" hidden>
+        <div class="workspace-panel-shell">
+          <div class="workspace-panel-header">
+            <div>
+              <button id="workspace-panel-back" class="btn-ghost btn-sm" type="button">← 返回仪表盘</button>
+              <h2 id="workspace-panel-title" class="workspace-panel-title">工作区</h2>
+              <p id="workspace-panel-subtitle" class="workspace-panel-subtitle">查看运行、流水线和记忆状态。</p>
+            </div>
+          </div>
+          <div id="workspace-panel-content" class="workspace-panel-content">
+            <!-- Agent 监控 -->
+            <div id="panel-monitor" class="drawer-panel-content shell-panel-content" hidden>
+              <h3 class="drawer-panel-title">Agent 监控</h3>
+              <section class="inner-section">
+                <h4 class="inner-title">待审批 <span id="approvals-count" class="memory-count">0</span></h4>
+                <div id="approvals-list" class="stack"></div>
+              </section>
+              <section class="inner-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <h4 class="inner-title">运行记录</h4>
+                  <button id="refresh-runs" class="btn-ghost btn-sm">刷新</button>
+                </div>
+                <div id="agent-runs-list" class="runs-list"></div>
+              </section>
+              <section class="panel log-stream-panel" id="log-stream-section" hidden>
+                <div class="log-stream-header">
+                  <span class="panel-title" id="log-stream-title">日志流</span>
+                  <button id="log-stream-close" class="btn-ghost btn-sm">关闭</button>
+                </div>
+                <div id="log-stream-content" class="log-stream-content"></div>
+                <div id="log-stream-input-row" class="log-stream-input-row" hidden>
+                  <input id="log-stream-input" type="text" placeholder="追加指令…" class="log-stream-input">
+                  <button id="log-stream-send" class="btn btn-primary btn-sm">发送</button>
+                </div>
+              </section>
+            </div>
+
+            <!-- 流水线 -->
+            <div id="panel-pipeline" class="drawer-panel-content shell-panel-content" hidden>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                <h3 class="drawer-panel-title" style="margin:0;">流水线进度</h3>
+                <button id="refresh-pipeline" class="btn-ghost btn-sm">刷新</button>
+              </div>
+              <div id="pipeline-projects" class="pipeline-list"></div>
+            </div>
+
+            <!-- 记忆 -->
+            <div id="panel-memory" class="drawer-panel-content shell-panel-content" hidden>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                <h3 class="drawer-panel-title" style="margin:0;">记忆</h3>
+                <div style="display:flex;gap:8px;">
+                  <button id="memory-compress-btn" class="btn btn-sm">触发压缩</button>
+                  <button id="memory-event-toggle" class="btn btn-sm">记录事件</button>
+                </div>
+              </div>
+              <form id="memory-event-form" class="form panel" hidden style="margin-bottom:16px;">
+                <div class="form-grid">
+                  <label>事件类型<select id="memory-event-type"><option value="user_message">用户消息</option><option value="decision">决策</option></select></label>
+                  <label>范围类型<select id="memory-scope-type"><option value="company">公司</option><option value="project">项目</option><option value="cr">变更请求</option></select></label>
+                  <label>范围 ID<input id="memory-scope-id" type="text" required></label>
+                </div>
+                <label>内容<textarea id="memory-payload" rows="3" required></textarea></label>
+                <div class="form-actions">
+                  <button class="btn btn-primary" type="submit">提交</button>
+                  <button id="memory-event-cancel" class="btn" type="button">取消</button>
+                </div>
+              </form>
+              <div class="memory-layout">
+                <div class="memory-sidebar">
+                  <div class="memory-nav">
+                    <button class="memory-nav-item active" data-tab="facts"><span class="memory-nav-icon">◆</span>Facts<span id="facts-count" class="memory-count">0</span></button>
+                    <button class="memory-nav-item" data-tab="episodes"><span class="memory-nav-icon">◉</span>Episodes<span id="episodes-count" class="memory-count">0</span></button>
+                    <button class="memory-nav-item" data-tab="events"><span class="memory-nav-icon">◎</span>Events<span id="events-count" class="memory-count">0</span></button>
+                    <button class="memory-nav-item" data-tab="pack"><span class="memory-nav-icon">▣</span>Pack</button>
+                  </div>
+                </div>
+                <div class="memory-content">
+                  <div id="memory-facts-panel" class="memory-panel"><div class="facts-filter-row"><label>筛选类型：<select id="facts-type-filter"><option value="">全部</option></select></label></div></div>
+                  <div id="memory-episodes-panel" class="memory-panel" hidden></div>
+                  <div id="memory-events-panel" class="memory-panel" hidden></div>
+                  <div id="memory-pack-panel" class="memory-panel" hidden></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="project-detail-view" class="project-detail-view" hidden>
+        <div class="project-detail-shell">
+          <div class="project-detail-header">
+            <div>
+              <button id="project-detail-back" class="btn-ghost btn-sm" type="button">← 返回仪表盘</button>
+              <h2 id="project-detail-title" class="project-detail-title">项目详情</h2>
+              <p id="project-detail-summary" class="project-detail-summary"></p>
+            </div>
+            <div class="project-detail-actions">
+              <button id="project-detail-iterate" class="btn btn-primary btn-sm" type="button">继续迭代</button>
+              <button id="project-detail-refresh" class="btn btn-sm" type="button">刷新</button>
+            </div>
+          </div>
+
+          <div class="project-detail-grid">
+            <section id="context-control-panel" class="project-detail-card context-control-panel">
+              <div class="project-detail-card-title">上下文控制</div>
+              <div id="context-scope-selector" class="context-scope-selector">当前范围：项目</div>
+              <div id="context-pack-preview" class="context-card"></div>
+              <div id="context-facts-preview" class="context-card"></div>
+              <div id="context-compress-actions" class="context-compress-actions"></div>
+            </section>
+            <section class="project-detail-card">
+              <div id="project-detail-agents" class="project-detail-list"></div>
+            </section>
+            <section class="project-detail-card">
+              <div class="project-detail-card-title">运行历史</div>
+              <div id="project-detail-runs" class="project-detail-list"></div>
+            </section>
+            <section id="project-quality-panel" class="project-detail-card project-quality-panel">
+              <div class="project-detail-card-title">质量门</div>
+              <div id="quality-gate-summary" class="quality-gate-summary"></div>
+              <div id="project-detail-gates" class="project-detail-list" hidden></div>
+              <div id="quality-gate-list" class="project-detail-list quality-gate-list"></div>
+              <div id="quality-regression-actions" class="quality-regression-actions"></div>
+            </section>
+            <section class="project-detail-card">
+              <div class="project-detail-card-title">Artifacts</div>
+              <div id="project-detail-artifacts" class="project-detail-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-statusbar">
+      <span class="statusbar-item"><span class="status-dot ok"></span><span id="status-conn-text">已连接</span></span>
+      <span class="statusbar-item">项目 <span id="status-project-count">0</span></span>
+      <span class="statusbar-item">运行中 <span id="status-running-count">0</span></span>
+      <span class="statusbar-item">待审批 <span id="status-approval-count">0</span></span>
+      <span class="statusbar-spacer"></span>
+      <span class="statusbar-item">成本 <span id="status-cost">—</span></span>
+    </footer>
+  </div>
   <div id="run-detail-panel" class="run-detail-panel" hidden>
     <div class="run-detail-header">
       <div class="run-detail-title-row">
@@ -77,6 +307,17 @@
         <span id="run-detail-cost" class="meta"></span>
       </div>
       <button id="run-detail-close" class="btn-ghost btn-sm">✕ 关闭</button>
+    </div>
+    <div id="run-detail-overview" class="run-detail-overview"></div>
+    <div id="run-agent-timeline" class="run-agent-timeline"></div>
+    <div id="run-tool-summary" class="run-tool-summary"></div>
+    <div id="run-permission-actions" class="run-permission-actions" hidden></div>
+    <div id="run-transcript-filter" class="run-transcript-filter">
+      <button class="transcript-filter-btn active" type="button" data-filter="all">全部</button>
+      <button class="transcript-filter-btn" type="button" data-filter="text">文本</button>
+      <button class="transcript-filter-btn" type="button" data-filter="tool_use">工具</button>
+      <button class="transcript-filter-btn" type="button" data-filter="tool_result">结果</button>
+      <button class="transcript-filter-btn" type="button" data-filter="permission">权限</button>
     </div>
     <div id="run-transcript" class="run-transcript"></div>
     <div id="run-detail-input-row" class="run-detail-input-row" hidden>
@@ -99,19 +340,6 @@
           <button class="drawer-nav-item active" data-panel="cli">
             <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15"><path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>
             执行模式
-          </button>
-          <button class="drawer-nav-item" data-panel="monitor">
-            <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
-            Agent 监控
-            <span id="approvals-count-badge" class="nav-badge" hidden>0</span>
-          </button>
-          <button class="drawer-nav-item" data-panel="pipeline">
-            <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
-            流水线
-          </button>
-          <button class="drawer-nav-item" data-panel="memory">
-            <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
-            记忆
           </button>
           <button class="drawer-nav-item" data-panel="skills">
             <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15"><path d="M11 17a1 1 0 001.447.894l4-2A1 1 0 0017 15V9.236a1 1 0 00-1.447-.894l-4 2a1 1 0 00-.553.894V17zM15.211 6.276a1 1 0 000-1.788l-4.764-2.382a1 1 0 00-.894 0L4.789 4.488a1 1 0 000 1.788l4.764 2.382a1 1 0 00.894 0l4.764-2.382zM4.447 8.342A1 1 0 003 9.236V15a1 1 0 00.553.894l4 2A1 1 0 009 17v-5.764a1 1 0 00-.553-.894l-4-2z"/></svg>
@@ -143,84 +371,22 @@
                 <button id="rescan-cli" class="btn-ghost btn-sm">重新扫描</button>
               </div>
               <div id="cli-list" class="cli-list"></div>
+              <div class="bypass-section">
+                <div class="bypass-header">
+                  <div class="bypass-info">
+                    <div class="bypass-title">权限绕过</div>
+                    <div class="bypass-desc">允许 Claude CLI 自动批准文件操作（读写/删除/执行）。默认关闭，仅在遇到权限错误时开启。</div>
+                  </div>
+                  <label class="toggle-switch" title="切换权限绕过">
+                    <input type="checkbox" id="bypass-toggle">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div id="bypass-warning" class="bypass-warning" hidden>⚠ 已启用权限绕过 — Claude CLI 可以自动修改文件系统中的任意文件。仅在受信任的项目中使用。</div>
+              </div>
             </div>
             <div id="exec-byok" class="exec-mode-panel" hidden>
               <!-- 由 loadByokKeys() 动态渲染 -->
-            </div>
-          </div>
-
-          <!-- Agent 监控 -->
-          <div id="panel-monitor" class="drawer-panel-content" hidden>
-            <h3 class="drawer-panel-title">Agent 监控</h3>
-            <section class="inner-section">
-              <h4 class="inner-title">待审批 <span id="approvals-count" class="memory-count">0</span></h4>
-              <div id="approvals-list" class="stack"></div>
-            </section>
-            <section class="inner-section">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <h4 class="inner-title">运行记录</h4>
-                <button id="refresh-runs" class="btn-ghost btn-sm">刷新</button>
-              </div>
-              <div id="agent-runs-list" class="runs-list"></div>
-            </section>
-            <section class="panel log-stream-panel" id="log-stream-section" hidden>
-              <div class="log-stream-header">
-                <span class="panel-title" id="log-stream-title">日志流</span>
-                <button id="log-stream-close" class="btn-ghost btn-sm">关闭</button>
-              </div>
-              <div id="log-stream-content" class="log-stream-content"></div>
-              <div id="log-stream-input-row" class="log-stream-input-row" hidden>
-                <input id="log-stream-input" type="text" placeholder="追加指令…" class="log-stream-input">
-                <button id="log-stream-send" class="btn btn-primary btn-sm">发送</button>
-              </div>
-            </section>
-          </div>
-
-          <!-- 流水线 -->
-          <div id="panel-pipeline" class="drawer-panel-content" hidden>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-              <h3 class="drawer-panel-title" style="margin:0;">流水线进度</h3>
-              <button id="refresh-pipeline" class="btn-ghost btn-sm">刷新</button>
-            </div>
-            <div id="pipeline-projects" class="pipeline-list"></div>
-          </div>
-
-          <!-- 记忆 -->
-          <div id="panel-memory" class="drawer-panel-content" hidden>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-              <h3 class="drawer-panel-title" style="margin:0;">记忆</h3>
-              <div style="display:flex;gap:8px;">
-                <button id="memory-compress-btn" class="btn btn-sm">触发压缩</button>
-                <button id="memory-event-toggle" class="btn btn-sm">记录事件</button>
-              </div>
-            </div>
-            <form id="memory-event-form" class="form panel" hidden style="margin-bottom:16px;">
-              <div class="form-grid">
-                <label>事件类型<select id="memory-event-type"><option value="user_message">用户消息</option><option value="decision">决策</option></select></label>
-                <label>范围类型<select id="memory-scope-type"><option value="company">公司</option><option value="project">项目</option><option value="cr">变更请求</option></select></label>
-                <label>范围 ID<input id="memory-scope-id" type="text" required></label>
-              </div>
-              <label>内容<textarea id="memory-payload" rows="3" required></textarea></label>
-              <div class="form-actions">
-                <button class="btn btn-primary" type="submit">提交</button>
-                <button id="memory-event-cancel" class="btn" type="button">取消</button>
-              </div>
-            </form>
-            <div class="memory-layout">
-              <div class="memory-sidebar">
-                <div class="memory-nav">
-                  <button class="memory-nav-item active" data-tab="facts"><span class="memory-nav-icon">◆</span>Facts<span id="facts-count" class="memory-count">0</span></button>
-                  <button class="memory-nav-item" data-tab="episodes"><span class="memory-nav-icon">◉</span>Episodes<span id="episodes-count" class="memory-count">0</span></button>
-                  <button class="memory-nav-item" data-tab="events"><span class="memory-nav-icon">◎</span>Events<span id="events-count" class="memory-count">0</span></button>
-                  <button class="memory-nav-item" data-tab="pack"><span class="memory-nav-icon">▣</span>Pack</button>
-                </div>
-              </div>
-              <div class="memory-content">
-                <div id="memory-facts-panel" class="memory-panel"><div class="facts-filter-row"><label>筛选类型：<select id="facts-type-filter"><option value="">全部</option></select></label></div></div>
-                <div id="memory-episodes-panel" class="memory-panel" hidden></div>
-                <div id="memory-events-panel" class="memory-panel" hidden></div>
-                <div id="memory-pack-panel" class="memory-panel" hidden></div>
-              </div>
             </div>
           </div>
 
@@ -306,9 +472,46 @@
         <label>验收标准（可选，每行一条）<textarea id="launch-criteria" rows="3" placeholder="完成的标志是什么？"></textarea></label>
       </div>
 
+      <div id="launch-context-preview" class="context-card launch-context-preview"></div>
+      <div id="launch-context-mode" class="launch-mode-note">当前自动注入公司级默认 Retrieval Pack。</div>
+
       <div class="form-actions">
         <button class="btn btn-primary" type="submit" id="launch-submit-btn">启动</button>
         <button type="button" class="btn" id="launch-cancel">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="gate-fix-dialog" class="dialog">
+    <form id="gate-fix-form" class="form">
+      <h3>创建修复请求</h3>
+      <p id="gate-fix-preview" class="launch-mode-note"></p>
+      <input id="gate-fix-project" type="hidden">
+      <input id="gate-fix-gate" type="hidden">
+      <label>问题标题 <input id="gate-fix-title" type="text" required></label>
+      <label>当前问题 <textarea id="gate-fix-current" rows="3" required></textarea></label>
+      <label>期望结果 <textarea id="gate-fix-expected" rows="3" required></textarea></label>
+      <label>验收标准（每行一条）<textarea id="gate-fix-criteria" rows="3" required></textarea></label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" id="gate-fix-submit">创建</button>
+        <button type="button" class="btn" id="gate-fix-cancel">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 🆕 迭代对话框 -->
+  <dialog id="iterate-dialog" class="dialog">
+    <form id="iterate-form" class="form">
+      <h3>继续迭代</h3>
+      <p class="launch-mode-note" style="padding:0 0 8px;">在已有项目基础上追加一轮开发，Agent 会读取项目现有文件和状态继续工作。</p>
+      <label>项目名称 <input id="iterate-project" type="text" readonly></label>
+      <label>本轮要做什么？<textarea id="iterate-prompt" rows="3" placeholder="描述本轮迭代的目标，例如：给登录页加上短信验证码登录"></textarea></label>
+      <label>验收标准（可选，每行一条）<textarea id="iterate-criteria" rows="2" placeholder="完成的标志是什么？"></textarea></label>
+      <div id="iterate-context-preview" class="context-card iterate-context-preview"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-sm" id="iterate-context-refresh">刷新上下文</button>
+        <button class="btn btn-primary" type="submit" id="iterate-submit-btn">启动迭代</button>
+        <button type="button" class="btn" id="iterate-cancel">取消</button>
       </div>
     </form>
   </dialog>

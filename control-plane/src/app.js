@@ -243,6 +243,24 @@ function createApp(dependencies) {
     res.json({ ok: true, service: 'one-person-dev-company-control-plane', version: config.version });
   });
 
+  // ── 权限管理 ────────────────────────────────────────────────────────────────
+
+  let permissionBypassEnabled = config.dangerouslySkipPermissions === true;
+
+  app.get('/api/permissions', (_req, res) => {
+    res.json({ dangerouslySkipPermissions: permissionBypassEnabled });
+  });
+
+  app.post('/api/permissions', (req, res) => {
+    const { dangerouslySkipPermissions } = req.body || {};
+    if (typeof dangerouslySkipPermissions !== 'boolean') {
+      res.status(400).json({ error: 'dangerouslySkipPermissions must be a boolean' });
+      return;
+    }
+    permissionBypassEnabled = dangerouslySkipPermissions;
+    res.json({ dangerouslySkipPermissions: permissionBypassEnabled });
+  });
+
   // ── CLI 检测 (M2) ────────────────────────────────────────────────────────────
 
   const { exec } = require('child_process');
@@ -658,6 +676,36 @@ function createApp(dependencies) {
     res.json(concurrency.getLockStatus());
   });
 
+  // 重试因权限暂停的 run
+  app.post('/api/runs/:id/retry', async (req, res, next) => {
+    try {
+      const run = store.listRuns().find(r => r.id === req.params.id);
+      if (!run) {
+        res.status(404).json({ error: 'run not found' });
+        return;
+      }
+      if (!runner) {
+        res.status(503).json({ error: 'runner unavailable' });
+        return;
+      }
+
+      res.status(202).json({ status: 'retrying' });
+
+      setImmediate(async () => {
+        try {
+          await runner.start({
+            commandType: run.commandType,
+            targetName: run.targetName,
+            prompt: run.prompt,
+            dangerouslySkipPermissions: true
+          });
+        } catch { /* 静默失败 */ }
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // 追加指令：用 --resume 启动新进程注入追加指令
   app.post('/api/runs/:id/resume', async (req, res, next) => {
     try {
@@ -775,7 +823,7 @@ function createApp(dependencies) {
         return;
       }
 
-      const runPayload = { ...validation.payload };
+      const runPayload = { ...validation.payload, dangerouslySkipPermissions: permissionBypassEnabled };
 
       const lockId = `run:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       const scope = {

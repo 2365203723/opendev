@@ -94,6 +94,7 @@ function createClaudeRunner(options = {}) {
         claudeAssetsDir: config.claudeAssetsDir,
         commandType: payload.commandType,
         targetName,
+        dangerouslySkipPermissions: payload.dangerouslySkipPermissions,
         ...payload
       });
 
@@ -238,7 +239,10 @@ function createClaudeRunner(options = {}) {
       child.on('close', exitCode => {
         if (isFinished) return;
         const stderr = Buffer.concat(errors).toString('utf8').trim();
-        const status = exitCode === 0 ? 'completed' : 'failed';
+
+        // 检测权限错误 → 暂停而非失败
+        const isPermissionError = /EACCES|EPERM|permission denied|not permitted/i.test(stderr);
+        const status = isPermissionError ? 'paused_permission' : (exitCode === 0 ? 'completed' : 'failed');
         finish({
           id,
           status,

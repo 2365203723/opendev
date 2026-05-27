@@ -73,8 +73,8 @@ describe('createClaudeRunner', () => {
 
     const run = await runner.start({ commandType: 'go', targetName: 'demo' });
 
-    expect(run.status).toBe('failed');
-    expect(finishedRuns[0]).toMatchObject({ status: 'failed', exitCode: 1, errorMessage: 'permission denied' });
+    expect(run.status).toBe('paused_permission');
+    expect(finishedRuns[0]).toMatchObject({ status: 'paused_permission', exitCode: 1, errorMessage: 'permission denied' });
   });
 
   it('resolves the Claude npm shim to the Windows executable without shell interpolation', async () => {

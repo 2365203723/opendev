@@ -135,30 +135,33 @@ function buildScopeEnv({ scopeType, scopeId, productId, milestoneId, workstreamI
   return Object.keys(env).length > 0 ? env : undefined;
 }
 
-function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targetName, crId, patchPhase, projectName, memoryPhase, scopeType, scopeId, productId, milestoneId, workstreamId, taskId, agentRole, acceptanceRef, ...rest }) {
+function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targetName, crId, patchPhase, projectName, memoryPhase, scopeType, scopeId, productId, milestoneId, workstreamId, taskId, agentRole, acceptanceRef, dangerouslySkipPermissions, ...rest }) {
   if (!COMMANDS.has(commandType)) {
     throw new Error(`commandType must be one of: ${[...COMMANDS].join(', ')}`);
   }
+
+  // 权限模式：bypass ON → 全跳过；bypass OFF → 自动批准编辑、拒绝危险操作
+  const baseArgs = dangerouslySkipPermissions
+    ? ['-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose']
+    : ['-p', '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose'];
 
   if (commandType === 'patch') {
     if (!crId) {
       throw new Error('crId is required for patch command');
     }
     const prompt = buildPatchPrompt({ claudeAssetsDir, crId, patchPhase, projectName, ...rest });
-    return {
-      file: claudeCommand,
-      args: ['-p', prompt, '--output-format', 'stream-json', '--verbose'],
-      prompt
-    };
+    const args = dangerouslySkipPermissions
+      ? ['-p', prompt, '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose']
+      : ['-p', prompt, '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose'];
+    return { file: claudeCommand, args, prompt };
   }
 
   if (commandType === 'memory') {
     const prompt = buildMemoryPrompt({ claudeAssetsDir, memoryPhase, scopeType, scopeId, ...rest });
-    return {
-      file: claudeCommand,
-      args: ['-p', prompt, '--output-format', 'stream-json', '--verbose'],
-      prompt
-    };
+    const args = dangerouslySkipPermissions
+      ? ['-p', prompt, '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose']
+      : ['-p', prompt, '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose'];
+    return { file: claudeCommand, args, prompt };
   }
 
   if (typeof targetName !== 'string' || !SAFE_TARGET.test(targetName)) {
@@ -170,17 +173,23 @@ function buildClaudeCommand({ claudeCommand, claudeAssetsDir, commandType, targe
 
   // --resume 模式：用已有 session 追加指令
   if (rest.resumeSessionId) {
+    const args = dangerouslySkipPermissions
+      ? ['-p', basePrompt, '--resume', rest.resumeSessionId, '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose']
+      : ['-p', basePrompt, '--resume', rest.resumeSessionId, '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose'];
     return {
       file: claudeCommand,
-      args: ['-p', basePrompt, '--resume', rest.resumeSessionId, '--output-format', 'stream-json', '--verbose'],
+      args,
       prompt: basePrompt,
       ...(env ? { env } : {})
     };
   }
 
+  const args = dangerouslySkipPermissions
+    ? ['-p', basePrompt, '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose']
+    : ['-p', basePrompt, '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose'];
   return {
     file: claudeCommand,
-    args: ['-p', basePrompt, '--output-format', 'stream-json', '--verbose'],
+    args,
     prompt: basePrompt,
     ...(env ? { env } : {})
   };

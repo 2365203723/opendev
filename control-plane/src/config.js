@@ -31,7 +31,8 @@ function createConfig(env) {
     logsDir: env.AGENT_LOGS_DIR || 'G:/logs/agents',
     lessonsDir: env.LESSONS_DIR || 'H:/claude-assets/lessons',
     claudeAssetsDir: env.CLAUDE_ASSETS_DIR || 'H:/claude-assets',
-    claudeCommand: env.CLAUDE_COMMAND || 'claude'
+    claudeCommand: env.CLAUDE_COMMAND || 'claude',
+    dangerouslySkipPermissions: env.DANGEROUSLY_SKIP_PERMISSIONS === 'true'
   };
 }
 
