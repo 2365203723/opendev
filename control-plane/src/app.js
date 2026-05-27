@@ -638,6 +638,60 @@ function createApp(dependencies) {
     }
   });
 
+  app.get('/api/system/health', async (_req, res) => {
+    const checks = [];
+    const addCheck = (key, label, status, detail, action) => {
+      checks.push({ key, label, status, detail, action });
+    };
+
+    try {
+      const { stdout } = await execAsync(`${config.claudeCommand || 'claude'} --version`, { timeout: 6000 });
+      addCheck('claude', 'Claude Code', 'pass', stdout.trim().split(/\r?\n/)[0] || '可用', '可以启动本地 Agent 运行');
+    } catch (error) {
+      addCheck('claude', 'Claude Code', 'fail', error.message, '安装或修复 Claude Code CLI');
+    }
+
+    try {
+      const { stdout } = await execAsync('codex --version', { timeout: 6000 });
+      addCheck('codex', 'Codex 审查', 'pass', stdout.trim().split(/\r?\n/)[0] || '可用', '可执行双盲审查');
+    } catch (error) {
+      addCheck('codex', 'Codex 审查', 'warning', error.message, '检查 Codex CLI 或网络后再发布');
+    }
+
+    try {
+      const { stdout } = await execAsync('npm --prefix "control-plane" --version', { cwd: config.claudeAssetsDir, timeout: 6000 });
+      addCheck('tests', '测试命令', 'pass', `npm ${stdout.trim()}`, '可运行 control-plane 测试');
+    } catch (error) {
+      addCheck('tests', '测试命令', 'fail', error.message, '修复 Node/npm 环境');
+    }
+
+    try {
+      const runs = store.listRuns();
+      const running = runs.filter(run => run.status === 'running' || run.status === 'paused_permission').length;
+      addCheck('runner', '运行队列', running > 0 ? 'warning' : 'pass', running > 0 ? `${running} 个任务未完成` : '当前无运行中任务', '运行前确认没有冲突任务');
+    } catch (error) {
+      addCheck('runner', '运行队列', 'fail', error.message, '检查运行记录存储');
+    }
+
+    try {
+      const approvals = store.listPendingApprovals();
+      addCheck('approvals', '人工审批', approvals.length > 0 ? 'warning' : 'pass', approvals.length > 0 ? `${approvals.length} 个待审批` : '没有待审批项', '及时处理阻塞审批');
+    } catch (error) {
+      addCheck('approvals', '人工审批', 'fail', error.message, '检查审批表状态');
+    }
+
+    try {
+      const cost = store.getCostSummary();
+      addCheck('costs', '成本追踪', 'pass', `${Number(cost.totalCostCents || 0).toFixed(2)}¢ 已记录`, '持续关注长任务成本');
+    } catch (error) {
+      addCheck('costs', '成本追踪', 'warning', error.message, '检查 usage 日志解析');
+    }
+
+    const hasFail = checks.some(check => check.status === 'fail');
+    const hasWarning = checks.some(check => check.status === 'warning');
+    res.json({ status: hasFail ? 'fail' : hasWarning ? 'warning' : 'pass', checks, checkedAt: new Date().toISOString() });
+  });
+
   app.get('/api/projects', (_req, res, next) => {
     try {
       res.json({ projects: store.listProjects() });

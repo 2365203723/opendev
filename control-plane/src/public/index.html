@@ -36,8 +36,9 @@
         <div class="sidebar-label">Workspace</div>
         <button class="sidebar-nav-item active" type="button" data-shell-panel="dashboard">仪表盘</button>
         <button class="sidebar-nav-item" type="button" data-shell-panel="monitor">运行记录</button>
-        <button class="sidebar-nav-item" type="button" data-shell-panel="pipeline">流水线</button>
+        <button class="sidebar-nav-item" type="button" data-shell-panel="pipeline">交付链路</button>
         <button class="sidebar-nav-item" type="button" data-shell-panel="memory">记忆</button>
+        <button class="sidebar-nav-item" type="button" data-shell-panel="health">生产健康</button>
       </section>
       <section class="sidebar-section">
         <div class="sidebar-label">项目</div>
@@ -48,7 +49,7 @@
         <div id="sidebar-runs" class="sidebar-list"></div>
       </section>
       <section class="sidebar-section">
-        <div class="sidebar-label">Agents</div>
+        <div class="sidebar-label">执行团队</div>
         <div id="sidebar-agents" class="sidebar-list"></div>
       </section>
     </aside>
@@ -56,13 +57,22 @@
     <main class="app-main">
       <div class="home">
 
-    <section class="hero">
-      <h1 class="hero-title">你想开发什么？</h1>
-      <p class="hero-sub">软件开发全链路交付，开源本地优先方案。</p>
+    <section class="hero command-hero">
+      <div class="hero-copy">
+        <span class="eyebrow">Local AI Delivery Control Plane</span>
+        <h1 class="hero-title">把一句需求推进到可验收交付。</h1>
+        <p class="hero-sub">统一调度 Claude Code、验收关卡、人工审批、上下文记忆和变更回归，让 AI 开发像真实团队一样可观察、可控、可复用。</p>
+        <div class="trust-strip" aria-label="产品可信能力">
+          <span>本地优先</span>
+          <span>验收关卡可追踪</span>
+          <span>人工审批不断链</span>
+          <span>上下文可复用</span>
+        </div>
+      </div>
 
       <div class="input-card">
         <textarea id="main-input" class="main-textarea"
-          placeholder="描述你的需求，例如：做一个用户登录注册的 REST API，包含 JWT 认证…"
+          placeholder="描述一个真实目标，例如：为现有 SaaS 增加租户管理，包含 API、前端入口、测试和验收标准…"
           rows="3"></textarea>
         <div class="input-footer">
           <div class="type-pills" id="type-pills">
@@ -77,10 +87,52 @@
       </div>
     </section>
 
-    <!-- 🆕 Agent 开发流水线 -->
+    <section class="command-grid" aria-label="控制台概览">
+      <article class="command-card command-card-primary">
+        <div class="command-card-header">
+          <span class="section-title">正在运行</span>
+          <span id="command-running-count" class="command-count">0</span>
+        </div>
+        <div id="command-active-runs" class="command-list"></div>
+      </article>
+      <article class="command-card">
+        <div class="command-card-header">
+          <span class="section-title">需要处理</span>
+          <span id="command-action-count" class="command-count">0</span>
+        </div>
+        <div id="command-actions" class="command-list"></div>
+      </article>
+      <article class="command-card">
+        <div class="command-card-header">
+          <span class="section-title">生产就绪度</span>
+          <span id="command-health-status" class="command-count">检查中</span>
+        </div>
+        <div id="command-health" class="health-stack"></div>
+      </article>
+    </section>
+
+    <section class="capability-grid" aria-label="交付能力矩阵">
+      <button class="capability-card" type="button" data-open-panel="skills">
+        <span class="capability-kicker">01 Capability</span>
+        <strong>技能与 MCP 能力按需装配</strong>
+        <p>把测试、安全、文档、性能、数据等能力变成可管理模块，而不是一次性 prompt 拼接。</p>
+      </button>
+      <button class="capability-card" type="button" data-shell-panel="pipeline">
+        <span class="capability-kicker">02 Execution</span>
+        <strong>执行团队在后台推进</strong>
+        <p>架构、前后端、测试、安全和审查按阶段交接，用户只看关键决策和阻塞。</p>
+      </button>
+      <button class="capability-card" type="button" data-shell-panel="health">
+        <span class="capability-kicker">03 Assurance</span>
+        <strong>发布前看到真实就绪度</strong>
+        <p>运行队列、审批、成本、CLI 和测试状态聚合成一个可执行的生产健康检查。</p>
+      </button>
+    </section>
+
+    <!-- 交付链路 -->
     <section class="pipeline-viz" id="pipeline-viz">
       <div class="pipeline-header">
-        <span class="section-title">Agent 开发流水线</span>
+        <span class="section-title">交付链路</span>
         <span id="pipeline-status-text" class="pipeline-status-text">待命中</span>
       </div>
       <div class="pipeline-track">
@@ -159,13 +211,13 @@
             <div>
               <button id="workspace-panel-back" class="btn-ghost btn-sm" type="button">← 返回仪表盘</button>
               <h2 id="workspace-panel-title" class="workspace-panel-title">工作区</h2>
-              <p id="workspace-panel-subtitle" class="workspace-panel-subtitle">查看运行、流水线和记忆状态。</p>
+              <p id="workspace-panel-subtitle" class="workspace-panel-subtitle">查看运行、交付链路和记忆状态。</p>
             </div>
           </div>
           <div id="workspace-panel-content" class="workspace-panel-content">
-            <!-- Agent 监控 -->
+            <!-- 运行监控 -->
             <div id="panel-monitor" class="drawer-panel-content shell-panel-content" hidden>
-              <h3 class="drawer-panel-title">Agent 监控</h3>
+              <h3 class="drawer-panel-title">运行监控</h3>
               <section class="inner-section">
                 <h4 class="inner-title">待审批 <span id="approvals-count" class="memory-count">0</span></h4>
                 <div id="approvals-list" class="stack"></div>
@@ -190,10 +242,10 @@
               </section>
             </div>
 
-            <!-- 流水线 -->
+            <!-- 交付链路 -->
             <div id="panel-pipeline" class="drawer-panel-content shell-panel-content" hidden>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-                <h3 class="drawer-panel-title" style="margin:0;">流水线进度</h3>
+                <h3 class="drawer-panel-title" style="margin:0;">交付链路</h3>
                 <button id="refresh-pipeline" class="btn-ghost btn-sm">刷新</button>
               </div>
               <div id="pipeline-projects" class="pipeline-list"></div>
@@ -236,6 +288,18 @@
                   <div id="memory-pack-panel" class="memory-panel" hidden></div>
                 </div>
               </div>
+            </div>
+
+            <!-- 生产健康 -->
+            <div id="panel-health" class="drawer-panel-content shell-panel-content" hidden>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;">
+                <div>
+                  <h3 class="drawer-panel-title" style="margin:0;">生产健康</h3>
+                  <p class="drawer-panel-sub" style="margin:4px 0 0;">确认本地 Agent、审查、审批、成本和运行队列都处于可交付状态。</p>
+                </div>
+                <button id="refresh-health" class="btn-ghost btn-sm" type="button">重新检查</button>
+              </div>
+              <div id="health-check-list" class="health-check-list"></div>
             </div>
           </div>
         </div>
@@ -396,7 +460,12 @@
               <h3 class="drawer-panel-title" style="margin:0;">技能</h3>
               <div id="skills-installed-count" class="meta"></div>
             </div>
-            <p class="drawer-panel-sub">安装后，AI 在执行相关任务时自动启用对应能力。</p>
+            <p class="drawer-panel-sub">把可复用工作能力安装到交付系统里。安装后，AI 在执行测试、安全、文档、性能、数据等任务时自动启用对应能力。</p>
+            <div class="skill-summary-grid" aria-label="技能商店说明">
+              <div><strong>可治理</strong><span>安装状态、类别和标签清晰可查</span></div>
+              <div><strong>可扩展</strong><span>Skill 与 MCP 分层管理</span></div>
+              <div><strong>可交付</strong><span>能力绑定到真实执行流程</span></div>
+            </div>
             <div class="skill-filter-row">
               <button class="skill-cat-btn active" data-cat="">全部</button>
               <button class="skill-cat-btn" data-cat="质量">质量</button>

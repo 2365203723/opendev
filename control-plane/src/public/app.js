@@ -98,7 +98,7 @@ async function loadHomePage() {
     state.projects = projects;
     state.runs = runs;
     state.costSummary = costData;
-    renderFilteredHome();
+    renderCommandCenter(projects, runs);
     if (state.activeMainView === 'project' && state.selectedProjectName) {
       loadProjectDetail(state.selectedProjectName);
     }
@@ -130,6 +130,107 @@ function getSearchFilteredData() {
 function renderFilteredHome() {
   const { projects, runs } = getSearchFilteredData();
   renderProjectCards(projects, runs);
+  renderCommandCenter(projects, runs);
+}
+
+function commandItem(title, meta, status, onClick) {
+  const item = document.createElement(onClick ? 'button' : 'div');
+  item.className = 'command-item';
+  if (onClick) {
+    item.type = 'button';
+    item.addEventListener('click', onClick);
+  }
+  const body = document.createElement('span');
+  body.className = 'command-item-body';
+  const titleEl = document.createElement('strong');
+  titleEl.textContent = title;
+  const metaEl = document.createElement('span');
+  metaEl.textContent = meta;
+  body.append(titleEl, metaEl);
+  item.append(body, badge(status || 'ready', status));
+  return item;
+}
+
+function renderCommandCenter(projects, runs) {
+  renderCommandActiveRuns(runs);
+  renderCommandActions(projects, runs);
+  renderSystemHealth();
+}
+
+function healthRow(check) {
+  const row = document.createElement('div');
+  row.className = `health-row ${check.status}`;
+  const dot = document.createElement('span');
+  dot.className = `health-dot ${check.status}`;
+  const text = document.createElement('span');
+  text.textContent = check.label;
+  const detail = document.createElement('small');
+  detail.textContent = check.detail;
+  row.append(dot, text, detail);
+  return row;
+}
+
+function renderCommandActiveRuns(runs) {
+  const container = el('command-active-runs');
+  const count = el('command-running-count');
+  if (!container) return;
+  container.replaceChildren();
+  const activeRuns = runs.filter(r => r.status === 'running' || r.status === 'paused_permission').slice(0, 4);
+  if (count) count.textContent = String(activeRuns.length);
+  if (!activeRuns.length) {
+    container.appendChild(commandItem('没有运行中的任务', '控制台处于可接单状态', 'completed'));
+    return;
+  }
+  activeRuns.forEach(run => {
+    container.appendChild(commandItem(run.targetName || '未命名运行', `${run.commandType || 'run'} · ${timeAgo(run.startedAt || run.createdAt)}`, run.status, () => openRunDetail(run)));
+  });
+}
+
+function renderCommandActions(projects, runs) {
+  const container = el('command-actions');
+  const count = el('command-action-count');
+  if (!container) return;
+  container.replaceChildren();
+  const pausedRuns = runs.filter(r => r.status === 'paused_permission');
+  const blockedProjects = projects.filter(p => p.status === 'blocked');
+  const actions = [
+    ...pausedRuns.map(run => ({ title: run.targetName || '权限暂停', meta: '等待批准并重试', status: 'warning', onClick: () => openRunDetail(run) })),
+    ...blockedProjects.map(project => ({ title: project.name, meta: '项目阻塞，进入详情处理', status: 'failed', onClick: () => openProjectDetail(project.name) }))
+  ].slice(0, 5);
+  if (count) count.textContent = String(actions.length);
+  if (!actions.length) {
+    container.appendChild(commandItem('没有待处理事项', '审批、权限和阻塞均正常', 'completed'));
+    return;
+  }
+  actions.forEach(action => container.appendChild(commandItem(action.title, action.meta, action.status, action.onClick)));
+}
+
+async function renderSystemHealth() {
+  const container = el('command-health');
+  const status = el('command-health-status');
+  if (!container) return;
+  container.replaceChildren();
+  const loading = document.createElement('div');
+  loading.className = 'health-row';
+  loading.textContent = '正在检查本地交付环境…';
+  container.appendChild(loading);
+  try {
+    const data = await fetchJson('/api/system/health');
+    container.replaceChildren();
+    if (status) {
+      status.textContent = data.status === 'pass' ? 'Ready' : data.status === 'warning' ? 'Review' : 'Blocked';
+      status.className = `command-count ${data.status}`;
+    }
+    (data.checks || []).slice(0, 4).forEach(check => {
+      container.appendChild(healthRow(check));
+    });
+  } catch (error) {
+    container.replaceChildren(commandItem('健康检查不可用', error.message || '无法读取系统状态', 'failed'));
+    if (status) {
+      status.textContent = 'Blocked';
+      status.className = 'command-count fail';
+    }
+  }
 }
 
 function statusDotClass(status) {
@@ -309,9 +410,10 @@ function showMainView(viewName) {
 }
 
 const WORKSPACE_PANEL_META = {
-  monitor: { title: '运行记录', subtitle: '查看 Agent 运行、待审批事项和实时日志。' },
-  pipeline: { title: '流水线', subtitle: '按项目追踪从需求到部署的交付阶段。' },
-  memory: { title: '记忆', subtitle: '管理 Facts、Episodes、Events 和 Retrieval Pack。' }
+  monitor: { title: '运行监控', subtitle: '查看运行记录、待审批事项和实时日志。' },
+  pipeline: { title: '交付链路', subtitle: '按项目追踪从需求到部署的交付阶段。' },
+  memory: { title: '记忆', subtitle: '管理项目记忆、决策、风险和下次运行会注入的上下文。' },
+  health: { title: '生产健康', subtitle: '检查本地交付环境是否具备真实工作流可用性。' }
 };
 
 function openWorkspacePanel(panel) {
@@ -337,7 +439,24 @@ function openWorkspacePanel(panel) {
   }
   if (panel === 'pipeline') loadPipeline();
   if (panel === 'memory') loadMemory();
+  if (panel === 'health') loadHealthPanel();
 }
+
+async function loadHealthPanel() {
+  const container = el('health-check-list');
+  if (!container) return;
+  container.replaceChildren(empty('正在检查本地交付环境…'));
+  try {
+    const data = await fetchJson('/api/system/health');
+    container.replaceChildren();
+    (data.checks || []).forEach(check => container.appendChild(healthRow(check)));
+    if (!(data.checks || []).length) container.appendChild(empty('暂无检查项'));
+  } catch (error) {
+    container.replaceChildren(empty(error.message || '健康检查失败'));
+  }
+}
+
+el('refresh-health')?.addEventListener('click', loadHealthPanel);
 
 function closeWorkspacePanel() {
   if (state.approvalsTimer) {
@@ -995,6 +1114,10 @@ document.querySelectorAll('.drawer-nav-item').forEach(item => {
     if (panel === 'skills') loadSkills();
     if (panel === 'mcps') loadMcps();
   });
+});
+
+document.querySelectorAll('[data-open-panel]').forEach(item => {
+  item.addEventListener('click', () => openSettingsDrawer(item.dataset.openPanel));
 });
 
 // ── 执行模式：CLI 扫描 ────────────────────────────────────────────────────────
