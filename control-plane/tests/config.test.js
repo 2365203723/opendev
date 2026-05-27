@@ -1,21 +1,21 @@
 const { createConfig } = require('../src/config');
 
 describe('createConfig', () => {
-  it('uses safe localhost defaults and current pipeline paths', () => {
+  it('uses safe localhost defaults and portable repository paths', () => {
     const config = createConfig({});
 
     expect(config).toMatchObject({
       version: '0.1.0',
       host: '127.0.0.1',
       port: 3100,
-      projectsDir: 'E:/projects',
-      qaReportsDir: 'G:/qa-reports',
-      logsDir: 'G:/logs/agents',
-      lessonsDir: 'H:/claude-assets/lessons',
-      claudeAssetsDir: 'H:/claude-assets',
       claudeCommand: 'claude'
     });
     expect(config.databasePath.endsWith('control-plane/data/control-plane.db')).toBe(true);
+    expect(config.projectsDir.endsWith('data/projects')).toBe(true);
+    expect(config.qaReportsDir.endsWith('data/qa-reports')).toBe(true);
+    expect(config.logsDir.endsWith('data/logs/agents')).toBe(true);
+    expect(config.lessonsDir.endsWith('lessons')).toBe(true);
+    expect(config.claudeAssetsDir.endsWith('claude-assets')).toBe(true);
   });
 
   it('accepts explicit local paths from environment variables', () => {

@@ -90,6 +90,29 @@ npm --prefix control-plane start
 http://127.0.0.1:3100
 ```
 
+### 本地数据路径
+
+新用户 clone 后无需创建作者本机盘符目录。默认数据都写在仓库内：
+
+| 用途 | 默认路径 |
+|---|---|
+| 项目工作区 | `data/projects` |
+| QA 报告 | `data/qa-reports` |
+| Agent 日志 | `data/logs/agents` |
+| 经验库 | `lessons` |
+| 控制台数据库 | `control-plane/data/control-plane.db` |
+
+如需接入已有目录，可以用环境变量覆盖：
+
+```bash
+CLAUDE_ASSETS_DIR=/path/to/opendev \
+PROJECTS_DIR=/path/to/projects \
+QA_REPORTS_DIR=/path/to/qa-reports \
+AGENT_LOGS_DIR=/path/to/logs/agents \
+LESSONS_DIR=/path/to/lessons \
+npm --prefix control-plane start
+```
+
 ### 运行测试
 
 ```bash

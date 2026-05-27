@@ -46,14 +46,14 @@ describe('health API', () => {
       version: '0.1.0',
       host: '127.0.0.1',
       port: 3100,
-      projectsDir: 'E:/projects',
-      qaReportsDir: 'G:/qa-reports',
-      logsDir: 'G:/logs/agents',
-      lessonsDir: 'H:/claude-assets/lessons',
-      claudeAssetsDir: 'H:/claude-assets',
       claudeCommand: 'claude'
     });
     expect(defaultConfig.databasePath.endsWith('control-plane/data/control-plane.db')).toBe(true);
+    expect(defaultConfig.projectsDir.endsWith('data/projects')).toBe(true);
+    expect(defaultConfig.qaReportsDir.endsWith('data/qa-reports')).toBe(true);
+    expect(defaultConfig.logsDir.endsWith('data/logs/agents')).toBe(true);
+    expect(defaultConfig.lessonsDir.endsWith('lessons')).toBe(true);
+    expect(defaultConfig.claudeAssetsDir.endsWith('claude-assets')).toBe(true);
     expect(() => createConfig({ CONTROL_PLANE_HOST: '0.0.0.0' })).toThrow('CONTROL_PLANE_HOST must be 127.0.0.1 or localhost');
 
     const config = createConfig({
